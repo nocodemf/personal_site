@@ -1532,7 +1532,7 @@ export default function Home() {
               value={editingBody ?? selectedNoteData.body ?? ''}
               onChange={(e) => handleBodyChange(e.target.value)}
               placeholder="Start writing..."
-              className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] min-h-[400px] bg-transparent outline-none resize-none placeholder:text-black/30"
+              className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] h-[calc(100vh-250px)] bg-transparent outline-none resize-none placeholder:text-black/30"
             />
           </div>
           

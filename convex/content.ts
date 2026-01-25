@@ -84,6 +84,26 @@ export const createNote = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    
+    // Get existing tags
+    const existingTags = await ctx.db.query("tags").collect();
+    const existingTagNames = existingTags.map(t => t.name.toLowerCase());
+    
+    // Add any new tags to the tags table
+    for (const tagName of args.tags) {
+      const normalizedTag = tagName.toLowerCase().replace('#', '');
+      if (!existingTagNames.includes(normalizedTag)) {
+        // Determine category based on first letter
+        const firstLetter = normalizedTag.charAt(0).toUpperCase();
+        const category = /[A-Z]/.test(firstLetter) ? firstLetter : 'OTHER';
+        
+        await ctx.db.insert("tags", {
+          name: normalizedTag,
+          category: category,
+        });
+      }
+    }
+    
     return await ctx.db.insert("notes", {
       ...args,
       createdAt: now,
