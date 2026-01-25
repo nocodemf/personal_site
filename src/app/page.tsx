@@ -15,6 +15,7 @@ function useIsMobile() {
   
   useEffect(() => {
     setMounted(true);
+    // 768px threshold for mobile
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
