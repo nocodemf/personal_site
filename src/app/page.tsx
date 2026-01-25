@@ -8,6 +8,20 @@ import { PixelCharacter, AnimationPhase } from "@/components/PixelCharacter";
 
 type Stage = 'password' | 'first' | 'transitioning' | 'second';
 
+// Hook to detect mobile screen
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  return isMobile;
+}
+
 const CORRECT_PASSWORD = '3016';
 const SESSION_KEY = 'urav_authenticated';
 const TODAY_NOTES_KEY = 'urav_today_notes';
@@ -80,6 +94,7 @@ export default function Home() {
   const [showAbout, setShowAbout] = useState(false);
   const [activeView, setActiveView] = useState<'home' | 'index' | 'ventures' | 'archive'>('home');
   const [isHydrated, setIsHydrated] = useState(false);
+  const isMobile = useIsMobile();
   
   // Check session on mount
   useEffect(() => {
@@ -592,9 +607,9 @@ export default function Home() {
     <main className="h-screen w-screen bg-[#fffffc] relative overflow-x-hidden">
       {/* Password stage - character centered with password input */}
       {stage === 'password' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
           <PixelCharacter 
-            pixelSize={3}
+            pixelSize={isMobile ? 2.5 : 3}
             startPhase="idle"
             autoWalk={false}
           />
@@ -612,8 +627,439 @@ export default function Home() {
         </div>
       )}
 
-      {/* Left column - Stage 2 layout */}
-      {stage === 'second' && (
+      {/* ==================== MOBILE LAYOUT ==================== */}
+      {isMobile && stage === 'second' && (
+        <>
+          {/* Mobile Home - Character centered with nav underneath */}
+          {activeView === 'home' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
+              <PixelCharacter 
+                pixelSize={2} 
+                startPhase="entering_left"
+                startOffset={-150}
+                walkSpeed={4}
+                onPhaseChange={handlePhaseChange}
+              />
+              
+              {/* Navigation underneath character */}
+              <div 
+                className="mt-12 flex gap-6"
+                style={{
+                  opacity: showAbout ? 1 : 0,
+                  transition: 'opacity 0.5s ease-in',
+                }}
+              >
+                <button 
+                  onClick={() => setActiveView('index')} 
+                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                >
+                  index
+                </button>
+                <button 
+                  onClick={() => setActiveView('ventures')} 
+                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                >
+                  ventures
+                </button>
+                <button 
+                  onClick={() => setActiveView('archive')} 
+                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                >
+                  archive
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Index View */}
+          {activeView === 'index' && !selectedNoteId && (
+            <div className="absolute inset-0 flex flex-col bg-[#fffffc]">
+              {/* Header with back button and filters */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <button 
+                  onClick={() => setActiveView('home')}
+                  className="text-[14px] text-black/50 hover:text-black"
+                >
+                  ← back
+                </button>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setIndexFilter('all')}
+                    className={`text-[14px] ${indexFilter === 'all' ? 'text-black font-medium' : 'text-black/40'}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setIndexFilter('today')}
+                    className={`text-[14px] ${indexFilter === 'today' ? 'text-black font-medium border border-black px-2' : 'text-black/40'}`}
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+              
+              {/* Notes list or Today view */}
+              <div className="flex-1 overflow-y-auto px-4 pb-4">
+                {indexFilter === 'all' ? (
+                  <div className="space-y-3 pt-2">
+                    {indexItems.map((note, index) => (
+                      <div 
+                        key={note._id}
+                        onClick={() => setSelectedNoteId(note._id)}
+                        className="flex items-start gap-3 py-2 border-b border-black/5 cursor-pointer"
+                      >
+                        <span className="text-[12px] text-black/30 w-6">{String(index + 1).padStart(2, '0')}</span>
+                        <div 
+                          className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" 
+                          style={{ backgroundColor: note.color }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[14px] font-medium text-black truncate">{note.title}</p>
+                          <p className="text-[12px] text-black/40">{note.timestamp}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => setIsCreatingNote(true)}
+                      className="text-[14px] text-black/30 hover:text-black pt-2"
+                    >
+                      + New note
+                    </button>
+                  </div>
+                ) : (
+                  /* Today view for mobile */
+                  <div className="pt-4">
+                    <p className="text-[18px] font-medium text-black mb-6">
+                      {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </p>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-[12px] text-black/50 uppercase mb-2">Tasks</p>
+                        {todayTasks.map((task, idx) => (
+                          <div key={idx} className="flex items-center gap-2 py-1">
+                            <button onClick={() => toggleTask(idx)} className="text-[14px] text-black/50">
+                              [{task.completed ? '✓' : ' '}]
+                            </button>
+                            <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                              {task.text}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[14px] text-black/30">[+]</span>
+                          <input
+                            type="text"
+                            value={newTask}
+                            onChange={(e) => setNewTask(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                            placeholder="Add task..."
+                            className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
+                          />
+                        </div>
+                      </div>
+                      <div className="h-px bg-black/10" />
+                      <div>
+                        <p className="text-[12px] text-black/50 uppercase mb-2">Notes</p>
+                        <textarea
+                          value={todayNotes}
+                          onChange={(e) => setTodayNotes(e.target.value)}
+                          placeholder="Capture your thoughts..."
+                          className="w-full h-[200px] text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Note Detail View */}
+          {activeView === 'index' && selectedNoteId && selectedNoteData && (
+            <div className="absolute inset-0 flex flex-col bg-[#fffffc]">
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <button 
+                  onClick={() => setSelectedNoteId(null)}
+                  className="text-[14px] text-black/50 hover:text-black"
+                >
+                  ← back
+                </button>
+                <button
+                  onClick={async () => {
+                    if (selectedNoteId) {
+                      setIsAnalyzing(true);
+                      try {
+                        await analyzeNoteAction({ noteId: selectedNoteId });
+                      } finally {
+                        setIsAnalyzing(false);
+                      }
+                    }
+                  }}
+                  disabled={isAnalyzing}
+                  className="text-[12px] text-black/40 hover:text-black disabled:opacity-30"
+                >
+                  {isAnalyzing ? 'analyzing...' : 'analyze'}
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 pb-6">
+                <input
+                  value={editingTitle ?? selectedNoteData.title}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  className="text-[20px] font-semibold text-black w-full bg-transparent outline-none mb-2"
+                />
+                <p className="text-[12px] text-black/40 mb-4">{selectedNoteData.date}</p>
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {selectedNoteData.tags.map(tag => (
+                    <span key={tag} className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                {isEditingBody ? (
+                  <textarea
+                    value={editingBody ?? selectedNoteData.body ?? ''}
+                    onChange={(e) => handleBodyChange(e.target.value)}
+                    onBlur={() => setIsEditingBody(false)}
+                    autoFocus
+                    className="w-full min-h-[300px] text-[14px] text-black/80 leading-[1.7] bg-transparent outline-none resize-none"
+                  />
+                ) : (
+                  <div
+                    onClick={() => {
+                      setIsEditingBody(true);
+                      setEditingBody(selectedNoteData.body ?? '');
+                    }}
+                    className="text-[14px] text-black/80 leading-[1.7] min-h-[200px] cursor-text"
+                    dangerouslySetInnerHTML={{ 
+                      __html: selectedNoteData.body 
+                        ? renderMarkdownToHtml(selectedNoteData.body)
+                        : '<p class="text-black/30">Tap to start writing...</p>'
+                    }}
+                  />
+                )}
+                {/* AI Summary section for mobile */}
+                {selectedNoteData.aiSummary && (
+                  <div className="mt-6 pt-4 border-t border-black/10">
+                    <p className="text-[12px] font-medium text-black mb-2">brief</p>
+                    <p className="text-[12px] text-black/70">{selectedNoteData.aiSummary}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Ventures View */}
+          {activeView === 'ventures' && (
+            <div className="absolute inset-0 flex flex-col bg-[#fffffc]">
+              <div className="flex items-center px-4 pt-4 pb-2">
+                <button 
+                  onClick={() => setActiveView('home')}
+                  className="text-[14px] text-black/50 hover:text-black"
+                >
+                  ← back
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 pb-6">
+                <div className="flex gap-4 mb-6 border-b border-black/10 pb-2">
+                  {ventureKPIs.map((venture, idx) => (
+                    <button
+                      key={venture.name}
+                      onClick={() => setSelectedFolder(idx)}
+                      className={`text-[14px] pb-2 ${selectedFolder === idx ? 'text-black font-medium border-b-2 border-black -mb-[2px]' : 'text-black/40'}`}
+                    >
+                      {venture.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-4">
+                  {ventureKPIs[selectedFolder]?.metrics.map((metric, idx) => (
+                    <div key={idx}>
+                      <div className="flex justify-between text-[12px] mb-1">
+                        <span className="text-black/50 uppercase">{metric.label}</span>
+                        <span className="text-black">{metric.display}</span>
+                      </div>
+                      <div className="h-2 bg-black/10 relative">
+                        <div className="h-full bg-black" style={{ width: `${(metric.value / 100) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Archive View */}
+          {activeView === 'archive' && !selectedArchiveImage && (
+            <div className="absolute inset-0 flex flex-col bg-[#fffffc]">
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <button 
+                  onClick={() => setActiveView('home')}
+                  className="text-[14px] text-black/50 hover:text-black"
+                >
+                  ← back
+                </button>
+                <button
+                  onClick={() => setIsUploadingImage(true)}
+                  className="text-[18px] text-black/40 hover:text-black"
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 pb-6">
+                {/* Category filters */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {archiveCategories.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setArchiveFilter(cat === 'all' ? null : cat)}
+                      className={`text-[12px] px-2 py-1 rounded ${
+                        (cat === 'all' && !archiveFilter) || archiveFilter === cat
+                          ? 'bg-black text-white'
+                          : 'bg-black/5 text-black/60'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                {/* Image grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  {archiveImagesData?.map((image) => (
+                    <div
+                      key={image._id}
+                      onClick={() => setSelectedArchiveImage(image._id)}
+                      className="aspect-square bg-black/5 cursor-pointer overflow-hidden"
+                    >
+                      <img
+                        src={image.url || ''}
+                        alt={image.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] text-black/30 text-center mt-4">
+                  {archiveImagesData?.length || 0} images
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Archive Image Detail */}
+          {activeView === 'archive' && selectedArchiveImage && (() => {
+            const mobileSelectedImage = archiveImagesData?.find(img => img._id === selectedArchiveImage);
+            if (!mobileSelectedImage) return null;
+            return (
+              <div className="absolute inset-0 flex flex-col bg-[#fffffc]">
+                <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                  <button 
+                    onClick={() => setSelectedArchiveImage(null)}
+                    className="text-[14px] text-black/50 hover:text-black"
+                  >
+                    ← back
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm('Delete this image?') && selectedArchiveImage) {
+                        await deleteImageMutation({ id: selectedArchiveImage as Id<"archiveImages"> });
+                        setSelectedArchiveImage(null);
+                      }
+                    }}
+                    className="text-[14px] text-red-500/50 hover:text-red-500"
+                  >
+                    delete
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 pb-6">
+                  <img
+                    src={mobileSelectedImage.url || ''}
+                    alt={mobileSelectedImage.title}
+                    className="w-full h-auto mb-4"
+                  />
+                  <p className="text-[16px] font-medium text-black">{mobileSelectedImage.title}</p>
+                  {mobileSelectedImage.description && (
+                    <p className="text-[14px] text-black/60 mt-1">{mobileSelectedImage.description}</p>
+                  )}
+                  <p className="text-[12px] text-black/40 mt-2">{formatDate(mobileSelectedImage.uploadedAt)}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Mobile Upload Modal */}
+          {isUploadingImage && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#fffffc]/95 px-6">
+              <div className="w-full max-w-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span className="text-[14px] text-black">{selectedFile ? selectedFile.name : 'choose file'}</span>
+                    <input type="file" accept="image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} className="hidden" />
+                  </label>
+                  <button onClick={() => { setIsUploadingImage(false); setSelectedFile(null); }} className="text-[12px] text-black/30">✕</button>
+                </div>
+                <input type="text" placeholder="title" value={uploadForm.title} onChange={(e) => setUploadForm(p => ({ ...p, title: e.target.value }))} className="w-full text-[14px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent placeholder:text-black/30" />
+                <select value={uploadForm.category} onChange={(e) => setUploadForm(p => ({ ...p, category: e.target.value }))} className="w-full text-[14px] border-b border-black/10 pb-2 mb-6 outline-none bg-transparent">
+                  {archiveCategories.filter(c => c !== 'all').map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+                <button onClick={handleImageUpload} disabled={!selectedFile || !uploadForm.title.trim()} className="text-[12px] text-black/50 hover:text-black disabled:opacity-30">
+                  {uploadStatus === 'uploading' ? 'uploading...' : 'upload →'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile New Note Modal */}
+          {isCreatingNote && (
+            <div className="absolute inset-0 z-20 flex flex-col bg-[#fffffc] px-4 pt-4">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-[14px] font-medium">New note</span>
+                <button onClick={() => { setIsCreatingNote(false); setNewNoteTitle(''); setNewNoteTags([]); }} className="text-[12px] text-black/30">✕</button>
+              </div>
+              <input type="text" placeholder="Title" value={newNoteTitle} onChange={(e) => setNewNoteTitle(e.target.value)} className="w-full text-[16px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent placeholder:text-black/30" />
+              <div className="flex flex-wrap gap-2 mb-4">
+                {tagCategories && Object.values(tagCategories).flat().map((tag: string) => (
+                  <button
+                    key={tag}
+                    onClick={() => setNewNoteTags(prev => prev.includes(tag.replace('#', '')) ? prev.filter(t => t !== tag.replace('#', '')) : [...prev, tag.replace('#', '')])}
+                    className={`text-[11px] px-2 py-1 rounded ${newNoteTags.includes(tag.replace('#', '')) ? 'bg-black text-white' : 'bg-black/5 text-black/60'}`}
+                  >
+                    {tag.replace('#', '')}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  if (newNoteTitle.trim()) {
+                    createNoteMutation({
+                      title: newNoteTitle.trim(),
+                      body: '',
+                      color: ['#4A7CFF', '#E85454', '#B8B8B8', '#E8E854'][Math.floor(Math.random() * 4)],
+                      tags: newNoteTags,
+                      order: (notesData?.length || 0) + 1,
+                    });
+                    setIsCreatingNote(false);
+                    setNewNoteTitle('');
+                    setNewNoteTags([]);
+                  }
+                }}
+                disabled={!newNoteTitle.trim()}
+                className="text-[14px] text-black/50 hover:text-black disabled:opacity-30 mt-auto mb-8"
+              >
+                create →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ==================== DESKTOP LAYOUT ==================== */}
+      {/* Left column - Stage 2 layout (Desktop only) */}
+      {!isMobile && stage === 'second' && (
         <div 
           className="absolute top-0 bottom-0 left-0 flex flex-col"
           style={{ width: '32%' }}
@@ -876,8 +1322,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Right section - Index list view (hide when note is selected) */}
-      {stage === 'second' && activeView === 'index' && !selectedNoteId && (
+      {/* Right section - Index list view (hide when note is selected) - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'index' && !selectedNoteId && (
         <div 
           className="absolute top-0 bottom-0 right-0 flex flex-col"
           style={{ 
@@ -1206,8 +1652,8 @@ export default function Home() {
         </div>
       )}
       
-      {/* Right section - Ventures folders */}
-      {stage === 'second' && activeView === 'ventures' && (
+      {/* Right section - Ventures folders - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'ventures' && (
         <div 
           className="absolute top-0 bottom-0 right-0 flex flex-col"
           style={{ 
@@ -1301,8 +1747,8 @@ export default function Home() {
         </div>
       )}
       
-      {/* Right section - Archive image grid */}
-      {stage === 'second' && activeView === 'archive' && (
+      {/* Right section - Archive image grid - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'archive' && (
         <div 
           className="absolute top-0 bottom-0 right-0 flex flex-col"
           style={{ 
@@ -1327,15 +1773,24 @@ export default function Home() {
           {isUploadingImage && (
             <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ backgroundColor: 'rgba(255, 255, 252, 0.95)' }}>
               <div className="w-full max-w-sm px-8">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-2">
+                <div className="flex justify-between items-center mb-4">
+                  {/* Combined upload icon + button + file selector */}
+                  <label className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="17 8 12 3 7 8" />
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
-                    <span className="text-[14px] text-black">upload</span>
-                  </div>
+                    <span className="text-[14px] text-black">
+                      {selectedFile ? selectedFile.name : 'choose file'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
                   <button
                     onClick={() => {
                       setIsUploadingImage(false);
@@ -1346,16 +1801,6 @@ export default function Home() {
                   >
                     ✕
                   </button>
-                </div>
-                
-                {/* File input */}
-                <div className="mb-4">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    className="text-[12px] text-black/50"
-                  />
                 </div>
                 
                 {/* Title */}
@@ -1510,8 +1955,8 @@ export default function Home() {
         </div>
       )}
       
-      {/* Note detail view */}
-      {stage === 'second' && activeView === 'index' && selectedNoteId && selectedNoteData && (
+      {/* Note detail view - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'index' && selectedNoteId && selectedNoteData && (
         <div 
           className="absolute top-0 bottom-0 right-0 flex"
           style={{ 
