@@ -1105,61 +1105,64 @@ export default function Home() {
           
           {/* Today view - Daily notepad */}
           {indexFilter === 'today' && (
-            <div className="flex-1 overflow-y-auto px-8 pt-6">
-              {/* Tasks section */}
-              <div className="mb-8">
-                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
-                
-                {/* Task list */}
-                <div className="space-y-2 mb-4">
-                  {todayTasks.map((task, idx) => (
-                    <div 
-                      key={idx} 
-                      className="flex items-center gap-3 group"
-                    >
-                      <button
-                        onClick={() => toggleTask(idx)}
-                        className="text-[14px] text-black/50 hover:text-black transition-colors"
+            <div className="flex-1 flex flex-col px-8 pt-6 pb-6">
+              {/* Scrollable content area */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Tasks section */}
+                <div className="mb-8">
+                  <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
+                  
+                  {/* Task list */}
+                  <div className="space-y-2 mb-4">
+                    {todayTasks.map((task, idx) => (
+                      <div 
+                        key={idx} 
+                        className="flex items-center gap-3 group"
                       >
-                        [{task.completed ? '✓' : ' '}]
-                      </button>
-                      <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
-                        {task.text}
-                      </span>
-                    </div>
-                  ))}
+                        <button
+                          onClick={() => toggleTask(idx)}
+                          className="text-[14px] text-black/50 hover:text-black transition-colors"
+                        >
+                          [{task.completed ? '✓' : ' '}]
+                        </button>
+                        <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                          {task.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Add task input */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-[14px] text-black/30">[+]</span>
+                    <input
+                      type="text"
+                      value={newTask}
+                      onChange={(e) => setNewTask(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                      placeholder="Add a task..."
+                      className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
+                    />
+                  </div>
                 </div>
                 
-                {/* Add task input */}
-                <div className="flex items-center gap-3">
-                  <span className="text-[14px] text-black/30">[+]</span>
-                  <input
-                    type="text"
-                    value={newTask}
-                    onChange={(e) => setNewTask(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                    placeholder="Add a task..."
-                    className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
+                {/* Divider */}
+                <div className="h-px bg-black/10 mb-8" />
+                
+                {/* Notes section */}
+                <div>
+                  <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Notes</p>
+                  <textarea
+                    value={todayNotes}
+                    onChange={(e) => setTodayNotes(e.target.value)}
+                    placeholder="Capture your thoughts..."
+                    className="w-full h-[200px] text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed"
                   />
                 </div>
               </div>
               
-              {/* Divider */}
-              <div className="h-px bg-black/10 mb-8" />
-              
-              {/* Notes section */}
-              <div>
-                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Notes</p>
-                <textarea
-                  value={todayNotes}
-                  onChange={(e) => setTodayNotes(e.target.value)}
-                  placeholder="Capture your thoughts..."
-                  className="w-full h-[300px] text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed"
-                />
-              </div>
-              
-              {/* Save to Index section */}
-              <div className="mt-12 pt-3 border-t border-black/10 flex items-center justify-between">
+              {/* Save to Index section - fixed at bottom */}
+              <div className="pt-3 border-t border-black/10 flex items-center justify-between mt-auto">
                 <p className="text-[11px] text-black/30">
                   auto-saves at 11pm
                 </p>
@@ -1170,7 +1173,7 @@ export default function Home() {
                 >
                   {dailySaved ? '✓ saved' : 'save to index →'}
                 </button>
-        </div>
+              </div>
             </div>
           )}
         </div>
