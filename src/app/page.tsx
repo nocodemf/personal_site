@@ -34,7 +34,32 @@ function formatDate(timestamp: number): string {
   return date.toISOString().split('T')[0].replace(/-/g, '.');
 }
 
-// Helper to render simple markdown (bold text)
+// Helper to render markdown text as HTML string
+function renderMarkdownToHtml(text: string): string {
+  if (!text) return '';
+  
+  let html = text
+    // Escape HTML first
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3 class="text-[16px] font-semibold text-black mt-4 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-[18px] font-semibold text-black mt-5 mb-2">$1</h2>')
+    // Bold
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    // Line breaks (double newline = paragraph)
+    .replace(/\n\n/g, '</p><p class="mb-3">')
+    // Single line breaks
+    .replace(/\n/g, '<br/>');
+  
+  // Wrap in paragraph
+  return `<p class="mb-3">${html}</p>`;
+}
+
+// Helper to render simple markdown (bold text) as React nodes
 function renderMarkdown(text: string): React.ReactNode {
   if (!text) return null;
   
@@ -172,6 +197,7 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState<string | null>(null);
+  const [isEditingBody, setIsEditingBody] = useState(false);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const titleAutoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -179,6 +205,7 @@ export default function Home() {
   useEffect(() => {
     setEditingTitle(null);
     setEditingBody(null);
+    setIsEditingBody(false);
   }, [selectedNoteId]);
   
   // Update clock every second
@@ -1173,7 +1200,7 @@ export default function Home() {
                 >
                   {dailySaved ? '✓ saved' : 'save to index →'}
                 </button>
-              </div>
+        </div>
             </div>
           )}
         </div>
@@ -1530,13 +1557,30 @@ export default function Home() {
               ))}
             </div>
             
-            {/* Editable Note body - always editable, seamless */}
-            <textarea
-              value={editingBody ?? selectedNoteData.body ?? ''}
-              onChange={(e) => handleBodyChange(e.target.value)}
-              placeholder="Start writing..."
-              className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] h-[calc(100vh-250px)] bg-transparent outline-none resize-none placeholder:text-black/30"
-            />
+            {/* Note body - click to edit, renders markdown when not editing */}
+            {isEditingBody ? (
+              <textarea
+                value={editingBody ?? selectedNoteData.body ?? ''}
+                onChange={(e) => handleBodyChange(e.target.value)}
+                onBlur={() => setIsEditingBody(false)}
+                autoFocus
+                placeholder="Start writing..."
+                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] h-[calc(100vh-180px)] bg-transparent outline-none resize-none placeholder:text-black/30"
+              />
+            ) : (
+              <div
+                onClick={() => {
+                  setIsEditingBody(true);
+                  setEditingBody(selectedNoteData.body ?? '');
+                }}
+                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] min-h-[200px] cursor-text"
+                dangerouslySetInnerHTML={{ 
+                  __html: selectedNoteData.body 
+                    ? renderMarkdownToHtml(selectedNoteData.body)
+                    : '<p class="text-black/30">Click to start writing...</p>'
+                }}
+              />
+            )}
           </div>
           
           {/* Sidebar toggle button */}
