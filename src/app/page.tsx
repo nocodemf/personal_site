@@ -1,65 +1,1671 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useQuery, useMutation, useAction } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
+import { PixelCharacter, AnimationPhase } from "@/components/PixelCharacter";
+
+type Stage = 'password' | 'first' | 'transitioning' | 'second';
+
+const CORRECT_PASSWORD = '3016';
+const SESSION_KEY = 'urav_authenticated';
+const TODAY_NOTES_KEY = 'urav_today_notes';
+const TODAY_TASKS_KEY = 'urav_today_tasks';
+
+// Helper to format relative time
+function getRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  const weeks = Math.floor(diff / 604800000);
+  
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return `${weeks}w ago`;
+}
+
+// Helper to format date
+function formatDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  return date.toISOString().split('T')[0].replace(/-/g, '.');
+}
+
+// Helper to render simple markdown (bold text)
+function renderMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+  
+  // Split by **text** pattern and render bold
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={idx}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
 
 export default function Home() {
+  const [stage, setStage] = useState<Stage>('password');
+  const [password, setPassword] = useState('');
+  const [showAbout, setShowAbout] = useState(false);
+  const [activeView, setActiveView] = useState<'home' | 'index' | 'ventures' | 'archive'>('home');
+  const [isHydrated, setIsHydrated] = useState(false);
+  
+  // Check session on mount
+  useEffect(() => {
+    const isAuthenticated = sessionStorage.getItem(SESSION_KEY);
+    if (isAuthenticated === 'true') {
+      setStage('second');
+      setShowAbout(true);
+    }
+    setIsHydrated(true);
+  }, []);
+  
+  // Save session when authenticated
+  useEffect(() => {
+    if (stage === 'second') {
+      sessionStorage.setItem(SESSION_KEY, 'true');
+    }
+  }, [stage]);
+  const [selectedFolder, setSelectedFolder] = useState<number>(0);
+  
+  // Venture KPI data
+  const ventureKPIs = [
+    { // evos
+      name: 'evos',
+      metrics: [
+        { label: 'revenue', value: 85, display: '$2.4M' },
+        { label: 'raised', value: 60, display: '$5M' },
+        { label: 'operators', value: 45, display: '120+' },
+        { label: 'waitlist', value: 70, display: '2.4K' },
+      ]
+    },
+    { // studio
+      name: 'studio',
+      metrics: [
+        { label: 'revenue', value: 40, display: '$400K' },
+        { label: 'raised', value: 0, display: '—' },
+        { label: 'projects', value: 70, display: '45+' },
+        { label: 'team', value: 20, display: '4' },
+      ]
+    },
+    { // labs
+      name: 'labs',
+      metrics: [
+        { label: 'experiments', value: 90, display: '30+' },
+        { label: 'raised', value: 25, display: '$500K' },
+        { label: 'launches', value: 35, display: '8' },
+        { label: 'team', value: 15, display: '3' },
+      ]
+    },
+    { // fund
+      name: 'fund',
+      metrics: [
+        { label: 'deployed', value: 55, display: '$2M' },
+        { label: 'raised', value: 80, display: '$10M' },
+        { label: 'portfolio', value: 40, display: '15' },
+        { label: 'exits', value: 20, display: '2' },
+      ]
+    },
+  ];
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagsExpanded, setTagsExpanded] = useState(true);
+  const [indexFilter, setIndexFilter] = useState<'all' | 'today'>('all');
+  const [selectedNoteId, setSelectedNoteId] = useState<Id<"notes"> | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [indexSearch, setIndexSearch] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [todayNotes, setTodayNotes] = useState('');
+  const [todayTasks, setTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
+  const [dailySaved, setDailySaved] = useState(false);
+  
+  // Load Today notes from localStorage on mount
+  useEffect(() => {
+    const savedNotes = localStorage.getItem(TODAY_NOTES_KEY);
+    const savedTasks = localStorage.getItem(TODAY_TASKS_KEY);
+    if (savedNotes) setTodayNotes(savedNotes);
+    if (savedTasks) {
+      try {
+        setTodayTasks(JSON.parse(savedTasks));
+      } catch (e) {
+        console.error('Failed to parse saved tasks');
+      }
+    }
+  }, []);
+  
+  // Auto-save Today notes to localStorage
+  useEffect(() => {
+    if (isHydrated) {
+      localStorage.setItem(TODAY_NOTES_KEY, todayNotes);
+    }
+  }, [todayNotes, isHydrated]);
+  
+  // Auto-save Today tasks to localStorage
+  useEffect(() => {
+    if (isHydrated) {
+      localStorage.setItem(TODAY_TASKS_KEY, JSON.stringify(todayTasks));
+    }
+  }, [todayTasks, isHydrated]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [archiveFilter, setArchiveFilter] = useState<string | null>(null);
+  const [archiveFilterExpanded, setArchiveFilterExpanded] = useState(true);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadForm, setUploadForm] = useState({ title: '', description: '', category: 'design' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedArchiveImage, setSelectedArchiveImage] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  
+  // Archive categories
+  const archiveCategories = ['all', 'design', 'people', 'nature', 'food', 'travel', 'art', 'architecture'];
+  
+  const [newTask, setNewTask] = useState('');
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteTags, setNewNoteTags] = useState<string[]>([]);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [editingBody, setEditingBody] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const titleAutoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Reset editing state when switching notes
+  useEffect(() => {
+    setEditingTitle(null);
+    setEditingBody(null);
+  }, [selectedNoteId]);
+  
+  // Update clock every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
+  // Format today's date
+  const formatTodayDate = () => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const now = new Date();
+    const dayName = days[now.getDay()];
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    return `${dayName} ${day}/${month} ${year}`;
+  };
+  
+  const addTask = () => {
+    if (newTask.trim()) {
+      setTodayTasks(prev => [...prev, { text: newTask.trim(), completed: false }]);
+      setNewTask('');
+    }
+  };
+  
+  const toggleTask = (idx: number) => {
+    setTodayTasks(prev => prev.map((task, i) => 
+      i === idx ? { ...task, completed: !task.completed } : task
+    ));
+  };
+  
+  // Fetch notes and tags from Convex
+  const notesData = useQuery(api.content.getNotes, { tags: selectedTags.length > 0 ? selectedTags : undefined });
+  const tagCategories = useQuery(api.content.getTagsByCategory);
+  const createNoteMutation = useMutation(api.content.createNote);
+  
+  // Initialize editing body when note is selected
+  useEffect(() => {
+    if (selectedNoteId && notesData) {
+      const note = notesData.find(n => n._id === selectedNoteId);
+      if (note && editingBody === null) {
+        setEditingBody(note.body || '');
+      }
+    }
+  }, [selectedNoteId, notesData, editingBody]);
+  const updateNoteMutation = useMutation(api.updateNotes.updateNote);
+  const deleteNoteMutation = useMutation(api.updateNotes.deleteNote);
+  const analyzeNoteAction = useAction(api.agent.analyzeNote);
+  
+  // Archive
+  const archiveImagesData = useQuery(api.archive.getImages, archiveFilter ? { category: archiveFilter } : {});
+  const generateUploadUrl = useMutation(api.archive.generateUploadUrl);
+  const saveImageMutation = useMutation(api.archive.saveImage);
+  const deleteImageMutation = useMutation(api.archive.deleteImage);
+  
+  // Random colors for new notes
+  const noteColors = ['#4A7CFF', '#E85454', '#B8B8B8', '#E8E854', '#E8A854', '#2A2A2A', '#1A1A1A', '#E8A8A8'];
+  
+  const handleCreateNote = async () => {
+    if (!newNoteTitle.trim()) return;
+    
+    const randomColor = noteColors[Math.floor(Math.random() * noteColors.length)];
+    const noteCount = notesData?.length || 0;
+    
+    await createNoteMutation({
+      title: newNoteTitle.trim(),
+      body: '',
+      color: randomColor,
+      tags: newNoteTags,
+      order: noteCount + 1,
+    });
+    
+    setNewNoteTitle('');
+    setNewNoteTags([]);
+    setIsAddingTag(false);
+    setNewTagInput('');
+    setIsCreatingNote(false);
+  };
+  
+  const toggleNewNoteTag = (tag: string) => {
+    const tagName = tag.replace('#', '');
+    setNewNoteTags(prev => 
+      prev.includes(tagName) 
+        ? prev.filter(t => t !== tagName)
+        : [...prev, tagName]
+    );
+  };
+  
+  const handleAddCustomTag = () => {
+    if (!newTagInput.trim()) return;
+    const tagName = newTagInput.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!newNoteTags.includes(tagName)) {
+      setNewNoteTags(prev => [...prev, tagName]);
+    }
+    setNewTagInput('');
+    setIsAddingTag(false);
+  };
+  
+  const handleAnalyzeNote = async () => {
+    if (!selectedNoteId || isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      await analyzeNoteAction({ noteId: selectedNoteId });
+    } catch (error) {
+      console.error('Error analyzing note:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+  
+  const handleSaveTitle = async (newTitle: string) => {
+    if (!selectedNoteId || !newTitle.trim()) return;
+    await updateNoteMutation({ id: selectedNoteId, title: newTitle.trim() });
+    setEditingTitle(null);
+  };
+  
+  const handleSaveBody = async (newBody: string) => {
+    if (!selectedNoteId) return;
+    await updateNoteMutation({ id: selectedNoteId, body: newBody });
+  };
+  
+  // Debounced auto-save for note body
+  const handleBodyChange = (newBody: string) => {
+    setEditingBody(newBody);
+    
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    // Set new timer for auto-save after 1 second of no typing
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (selectedNoteId) {
+        updateNoteMutation({ id: selectedNoteId, body: newBody });
+      }
+    }, 1000);
+  };
+  
+  // Debounced auto-save for note title
+  const handleTitleChange = (newTitle: string) => {
+    setEditingTitle(newTitle);
+    
+    if (titleAutoSaveTimerRef.current) {
+      clearTimeout(titleAutoSaveTimerRef.current);
+    }
+    
+    titleAutoSaveTimerRef.current = setTimeout(() => {
+      if (selectedNoteId && newTitle.trim()) {
+        updateNoteMutation({ id: selectedNoteId, title: newTitle.trim() });
+      }
+    }, 1000);
+  };
+  
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (titleAutoSaveTimerRef.current) clearTimeout(titleAutoSaveTimerRef.current);
+    };
+  }, []);
+  
+  const handleDeleteNote = async (noteId: Id<"notes">, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Delete this note?')) {
+      await deleteNoteMutation({ id: noteId });
+      if (selectedNoteId === noteId) {
+        setSelectedNoteId(null);
+      }
+    }
+  };
+  
+  // Save daily note to index
+  const saveDailyToIndex = async () => {
+    if (!todayNotes.trim() && todayTasks.length === 0) return;
+    
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB', { 
+      weekday: 'long', 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    });
+    
+    // Format tasks as part of the body
+    const tasksText = todayTasks.length > 0 
+      ? `**Tasks:**\n${todayTasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
+      : '';
+    
+    const body = tasksText + (todayNotes || '');
+    const noteCount = notesData?.length || 0;
+    
+    await createNoteMutation({
+      title: `Daily: ${dateStr}`,
+      body,
+      color: '#B8B8B8',
+      tags: ['daily'],
+      order: noteCount + 1,
+    });
+    
+    // Clear the daily note and tasks
+    setTodayNotes('');
+    setTodayTasks([]);
+    setDailySaved(true);
+    
+    // Reset saved status after a moment
+    setTimeout(() => setDailySaved(false), 3000);
+  };
+  
+  // Auto-save daily note at 11pm
+  useEffect(() => {
+    const checkAutoSave = () => {
+      const now = new Date();
+      if (now.getHours() === 23 && now.getMinutes() === 0) {
+        // Only save if there's content and not already saved today
+        if ((todayNotes.trim() || todayTasks.length > 0) && !dailySaved) {
+          saveDailyToIndex();
+        }
+      }
+    };
+    
+    // Check every minute
+    const interval = setInterval(checkAutoSave, 60000);
+    return () => clearInterval(interval);
+  }, [todayNotes, todayTasks, dailySaved]);
+  
+  // Handle image upload
+  const handleImageUpload = async () => {
+    if (!selectedFile || !uploadForm.title.trim()) return;
+    
+    setUploadStatus('uploading');
+    
+    try {
+      // Get upload URL
+      const uploadUrl = await generateUploadUrl();
+      
+      // Upload the file
+      const result = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': selectedFile.type },
+        body: selectedFile,
+      });
+      
+      const { storageId } = await result.json();
+      
+      // Get image dimensions
+      const img = new Image();
+      const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+        img.onload = () => resolve({ width: img.width, height: img.height });
+        img.src = URL.createObjectURL(selectedFile);
+      });
+      
+      // Save to database
+      await saveImageMutation({
+        storageId,
+        title: uploadForm.title.trim(),
+        description: uploadForm.description.trim() || undefined,
+        category: uploadForm.category,
+        width: dimensions.width,
+        height: dimensions.height,
+      });
+      
+      // Show success
+      setUploadStatus('success');
+      
+      // Reset form after delay
+      setTimeout(() => {
+        setSelectedFile(null);
+        setUploadForm({ title: '', description: '', category: 'design' });
+        setIsUploadingImage(false);
+        setUploadStatus('idle');
+      }, 1500);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      setUploadStatus('error');
+      
+      // Reset error after delay
+      setTimeout(() => {
+        setUploadStatus('idle');
+      }, 3000);
+    }
+  };
+  
+  // Transform notes for display
+  const indexItems = useMemo(() => {
+    if (!notesData) return [];
+    return notesData.map((note, idx) => ({
+      _id: note._id,
+      id: String(idx + 1).padStart(2, '0'),
+      color: note.color,
+      title: note.title,
+      tags: note.tags,
+      timestamp: getRelativeTime(note.createdAt),
+      date: formatDate(note.createdAt),
+      body: note.body,
+      bullets: note.bullets || [],
+      furtherQuestions: note.furtherQuestions || [],
+      aiSummary: note.aiSummary || '',
+      relatedNotes: note.relatedNotes || [],
+      links: note.links || [],
+      lastAnalyzed: note.lastAnalyzed,
+    }));
+  }, [notesData]);
+  
+  // Get selected note data
+  const selectedNoteData = useMemo(() => {
+    if (!selectedNoteId || !indexItems.length) return null;
+    return indexItems.find(item => item._id === selectedNoteId) || null;
+  }, [selectedNoteId, indexItems]);
+  
+  // Handle tag click from table - add to filter
+  const handleTagClick = (tag: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't trigger note selection
+    const tagWithHash = `#${tag}`;
+    if (!selectedTags.includes(tagWithHash)) {
+      setSelectedTags(prev => [...prev, tagWithHash]);
+    }
+  };
+  
+  // Use fetched tag categories or fallback
+  const displayTagCategories = tagCategories || {
+    'A': ['#ai', '#architecture', '#art', '#automation'],
+    'B': ['#backend', '#books', '#business'],
+    'C': ['#code', '#creativity', '#crypto'],
+    'D': ['#data', '#design', '#devops'],
+    'E': ['#economics', '#engineering', '#experiments'],
+    'F': ['#finance', '#frontend', '#future'],
+    'L': ['#learning', '#life', '#links'],
+    'M': ['#marketing', '#music', '#mental-models'],
+    'N': ['#notes', '#networks'],
+    'P': ['#philosophy', '#productivity', '#projects'],
+    'S': ['#startups', '#systems', '#strategy'],
+    'T': ['#tech', '#thinking', '#tools'],
+    'W': ['#writing', '#work', '#web'],
+  };
+  
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+  
+  const handlePhaseChange = useCallback((phase: AnimationPhase) => {
+    // When first character exits right, start transition to second stage
+    if (phase === 'exited_right' && stage === 'first') {
+      setStage('transitioning');
+    }
+    // When second character settles, show the about text
+    if (phase === 'settled' && stage === 'second') {
+      setShowAbout(true);
+    }
+  }, [stage]);
+  
+  // After a brief delay, show the second stage
+  useEffect(() => {
+    if (stage === 'transitioning') {
+      const timer = setTimeout(() => {
+        setStage('second');
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, [stage]);
+  
+  // Handle password submission on Enter key
+  const handlePasswordKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && password === CORRECT_PASSWORD && stage === 'password') {
+      setStage('first');
+    }
+  };
+  
+  
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.trim()) {
+      setStage('first');
+    }
+  };
+  
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <main className="h-screen w-screen bg-[#fffffc] relative overflow-x-hidden">
+      {/* Password stage - character centered with password input */}
+      {stage === 'password' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <PixelCharacter 
+            pixelSize={3}
+            startPhase="idle"
+            autoWalk={false}
+          />
+          <div className="mt-8">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={handlePasswordKeyDown}
+              placeholder="enter password"
+              className="px-4 py-2 text-[14px] text-center bg-transparent border-b border-black/20 focus:border-black/40 outline-none transition-colors w-48 placeholder:text-black/30 focus:placeholder:text-transparent"
+              autoFocus
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+          </div>
+        </div>
+      )}
+
+      {/* Left column - Stage 2 layout */}
+      {stage === 'second' && (
+        <div 
+          className="absolute top-0 bottom-0 left-0 flex flex-col"
+          style={{ width: '32%' }}
+        >
+          {/* Vertical divider line - fades in with content */}
+          <div 
+            className="absolute top-0 bottom-0 right-0 w-px bg-black"
+            style={{
+              opacity: showAbout ? 1 : 0,
+              transition: 'opacity 0.5s ease-in',
+            }}
+          />
+          {/* Header - date/time and urav */}
+          <div 
+            className="w-full px-[10%] pt-4 flex justify-between items-center"
+            style={{
+              opacity: showAbout ? 1 : 0,
+              transition: 'opacity 0.5s ease-in',
+            }}
+          >
+            <p className="text-[14px] text-black/50 tabular-nums">
+              {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
+              {' '}
+              {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+            <p className="text-[14px] font-medium text-black">urav</p>
+          </div>
+
+          {/* Character - positioned near top */}
+          <div className="flex items-start justify-center px-[10%] pt-4 pb-8">
+            <PixelCharacter 
+              pixelSize={1.5} 
+              startPhase="entering_left"
+              startOffset={-150}
+              walkSpeed={4}
+              onPhaseChange={handlePhaseChange}
+            />
+          </div>
+
+          {/* Horizontal divider - extends from left padding to right edge (meets vertical line) */}
+          <div 
+            className="w-full pl-[10%]"
+            style={{
+              opacity: showAbout ? 1 : 0,
+              transition: 'opacity 0.5s ease-in',
+            }}
+          >
+            <div className="w-full h-px bg-black" />
+          </div>
+
+          {/* About section - shows when activeView is 'home' */}
+          {activeView === 'home' && (
+            <div 
+              className="w-full px-[10%] pt-8 pb-8"
+              style={{
+                opacity: showAbout ? 1 : 0,
+                transition: 'opacity 0.5s ease-in',
+              }}
+            >
+              <p className="text-[14px] font-medium text-black text-right mb-2">
+                about
+              </p>
+              <p className="text-[14px] font-normal text-[rgba(30,30,30,0.8)] leading-[1.6] text-right">
+                Evos autonomously assesses your operations, designs the highest-ROI AI employees for your team, and deploys them to work within your existing stack and team. Each system is specialised to your company, your workflows, and your operational context. Multiplying the capability of your team and systems.
+              </p>
+            </div>
+          )}
+          
+          {/* Ventures KPI section - shows when activeView is 'ventures' */}
+          {activeView === 'ventures' && (
+            <div 
+              className="w-full px-[10%] pt-6 pb-8"
+              style={{
+                opacity: showAbout ? 1 : 0,
+                transition: 'opacity 0.5s ease-in',
+              }}
+            >
+              <p className="text-[12px] text-black/40 uppercase tracking-wider text-right mb-6">
+                {ventureKPIs[selectedFolder].name}
+              </p>
+              
+              <div className="space-y-5">
+                {ventureKPIs[selectedFolder].metrics.map((metric, idx) => (
+                  <div key={idx}>
+                    <div className="flex items-baseline gap-2 mb-2 justify-end">
+                      <span className="text-[11px] text-black/40 uppercase tracking-wide">
+                        {metric.label}
+                      </span>
+                      <span className="text-[14px] text-black font-medium">
+                        {metric.display}
+                      </span>
+                    </div>
+                    {/* Dotted pixel progress bar */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-[20px] relative flex">
+                        {/* Filled portion - dense dots */}
+                        <div 
+                          className="h-full relative overflow-hidden"
+                          style={{ 
+                            width: `${metric.value}%`,
+                            background: `
+                              radial-gradient(circle, black 1.5px, transparent 1.5px)
+                            `,
+                            backgroundSize: '5px 5px',
+                          }}
+                        />
+                        {/* Divider line */}
+                        <div className="w-[2px] h-full bg-black" />
+                        {/* Unfilled portion - sparse dots */}
+                        <div 
+                          className="flex-1 h-full relative overflow-hidden"
+                          style={{ 
+                            background: `
+                              radial-gradient(circle, rgba(0,0,0,0.2) 1.5px, transparent 1.5px)
+                            `,
+                            backgroundSize: '5px 5px',
+                          }}
+                        />
+                      </div>
+                      {/* Percentage */}
+                      <span className="text-[14px] text-black/60 w-[45px] text-right">
+                        {metric.value}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Index section - shows when activeView is 'index' */}
+          {activeView === 'index' && (
+            <div 
+              className="w-full px-[10%] pt-6 pb-8 text-[12px] overflow-y-auto"
+              style={{
+                opacity: showAbout ? 1 : 0,
+                transition: 'opacity 0.5s ease-in',
+              }}
+            >
+              {/* Search by tags header */}
+              <button 
+                onClick={() => setTagsExpanded(!tagsExpanded)}
+                className="flex items-center gap-1 text-black hover:opacity-60 transition-opacity mb-4"
+              >
+                <span>[{tagsExpanded ? '-' : '+'}]</span>
+                <span>SEARCH BY TAGS</span>
+              </button>
+              
+              {tagsExpanded && (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-0">
+                  {Object.entries(displayTagCategories).map(([letter, tags]) => (
+                    <div key={letter} className="mb-3">
+                      {(tags as string[]).map((tag, idx) => (
+                        <div key={tag} className="flex items-center gap-2 whitespace-nowrap">
+                          {idx === 0 && <span className="w-3 text-black/50 flex-shrink-0">{letter}</span>}
+                          {idx !== 0 && <span className="w-3 flex-shrink-0"></span>}
+                          <button
+                            onClick={() => toggleTag(tag)}
+                            className="flex items-center gap-1 hover:opacity-60 transition-opacity whitespace-nowrap"
+                          >
+                            <span className="text-black/70 flex-shrink-0">[{selectedTags.includes(tag) ? '•' : ' '}]</span>
+                            <span className="text-black">{tag}</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {selectedTags.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-black/10">
+                  <p className="text-black/50 mb-2">selected:</p>
+                  <p className="text-black">{selectedTags.join(' ')}</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Archive section - shows when activeView is 'archive' */}
+          {activeView === 'archive' && (
+            <div 
+              className="w-full px-[10%] pt-6 pb-8 text-[12px]"
+              style={{
+                opacity: showAbout ? 1 : 0,
+                transition: 'opacity 0.5s ease-in',
+              }}
+            >
+              {/* Filter header */}
+              <button 
+                onClick={() => setArchiveFilterExpanded(!archiveFilterExpanded)}
+                className="flex items-center gap-1 text-black hover:opacity-60 transition-opacity mb-4"
+              >
+                <span>[{archiveFilterExpanded ? '-' : '+'}]</span>
+                <span>FILTER BY TYPE</span>
+              </button>
+              
+              {archiveFilterExpanded && (
+                <div className="flex flex-col gap-1">
+                  {archiveCategories.map(category => (
+                    <button
+                      key={category}
+                      onClick={() => setArchiveFilter(category === 'all' ? null : category)}
+                      className="flex items-center gap-2 hover:opacity-60 transition-opacity"
+                    >
+                      <span className="text-black/70">[{(archiveFilter === category) || (category === 'all' && !archiveFilter) ? '•' : ' '}]</span>
+                      <span className="text-black/70">{category}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {archiveFilter && (
+                <div className="mt-4 pt-4 border-t border-black/10">
+                  <p className="text-black/50 mb-2">selected:</p>
+                  <p className="text-black">{archiveFilter}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Spacer to push nav to bottom */}
+          <div className="flex-1" />
+
+          {/* Bottom navigation */}
+          <div 
+            className="w-full px-[10%] pb-6"
+            style={{
+              opacity: showAbout ? 1 : 0,
+              transition: 'opacity 0.5s ease-in',
+            }}
+          >
+            <div className="flex justify-end gap-4">
+              <button 
+                onClick={() => setActiveView('home')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'home' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                home
+              </button>
+              <button 
+                onClick={() => setActiveView('index')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'index' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                index
+              </button>
+              <button 
+                onClick={() => setActiveView('ventures')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'ventures' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                ventures
+              </button>
+              <button 
+                onClick={() => setActiveView('archive')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'archive' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                archive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Right section - Index list view (hide when note is selected) */}
+      {stage === 'second' && activeView === 'index' && !selectedNoteId && (
+        <div 
+          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          style={{ 
+            left: '32%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.5s ease-in',
+          }}
+        >
+          {/* Header row - changes based on filter */}
+          <div className="flex justify-between items-end px-8 pt-6 pb-4">
+            {/* Left side - search bar or date */}
+            {indexFilter === 'all' ? (
+              <div className="flex items-center gap-4 flex-1 max-w-md">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={indexSearch}
+                    onChange={(e) => setIndexSearch(e.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    placeholder="index"
+                    className="w-full text-[24px] font-normal text-black bg-transparent outline-none placeholder:text-black border-b border-black pb-1"
+                  />
+                </div>
+                {/* Magnifying glass icon */}
+                <svg 
+                  className="w-5 h-5 text-black flex-shrink-0 mb-1" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="11" cy="11" r="8" strokeWidth="2"/>
+                  <path strokeLinecap="round" strokeWidth="2" d="M21 21l-4.35-4.35"/>
+                </svg>
+              </div>
+            ) : (
+              <h1 className="text-[24px] font-normal text-black">
+                {formatTodayDate()}
+          </h1>
+            )}
+            
+            {/* Filters */}
+            <div className="flex gap-6">
+              <button
+                onClick={() => setIndexFilter('all')}
+                className={`text-[14px] font-medium transition-opacity ${indexFilter === 'all' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setIndexFilter('today')}
+                className={`text-[14px] font-medium transition-opacity ${indexFilter === 'today' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                Today
+              </button>
+            </div>
+          </div>
+          
+          {/* All view - Index items list */}
+          {indexFilter === 'all' && (
+          <div className="flex-1 overflow-y-auto px-8 pt-6">
+            {indexItems
+              .filter(item => {
+                if (!indexSearch.trim()) return true;
+                const search = indexSearch.toLowerCase();
+                return (
+                  item.title.toLowerCase().includes(search) ||
+                  item.body.toLowerCase().includes(search) ||
+                  item.aiSummary.toLowerCase().includes(search) ||
+                  item.tags.some(tag => tag.toLowerCase().includes(search))
+                );
+              })
+              .map((item, idx) => (
+              <div key={item._id}>
+                {/* Item row */}
+                <div 
+                  onClick={() => setSelectedNoteId(item._id)}
+                  className="group flex items-center py-3 gap-4 cursor-pointer hover:bg-black/[0.02] transition-colors -mx-2 px-2 rounded"
+                >
+                  {/* Number */}
+                  <span className="text-[14px] text-black/50 w-6 flex-shrink-0">{item.id}</span>
+                  
+                  {/* Color indicator */}
+                  <div 
+                    className="w-3 h-3 flex-shrink-0"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  
+                  {/* Title and timestamp */}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[14px] font-medium text-black">{item.title}</span>
+                    <span className="text-[14px] text-black/40"> — {item.timestamp}</span>
+                  </div>
+                  
+                  {/* Tags - clickable to filter */}
+                  <div className="flex gap-2 flex-shrink-0">
+                    {item.tags.map(tag => (
+                      <button 
+                        key={tag}
+                        onClick={(e) => handleTagClick(tag, e)}
+                        className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Delete button - appears on hover */}
+                  <button
+                    onClick={(e) => handleDeleteNote(item._id, e)}
+                    className="opacity-0 group-hover:opacity-100 text-[12px] text-black/30 hover:text-red-500 transition-all flex-shrink-0"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {/* Divider line */}
+                <div className="h-px bg-black/10" />
+              </div>
+            ))}
+            
+            {/* Bottom border */}
+            <div className="h-px bg-black/10" />
+            
+            {/* Create new note */}
+            <div className="py-3">
+              {isCreatingNote ? (
+                <div className="space-y-3">
+                  {/* Title input row */}
+                  <div className="flex items-center gap-4">
+                    <span className="text-[14px] text-black/50 w-6">+</span>
+                    <div className="w-3 h-3 bg-black/20 rounded-sm" />
+                    <input
+                      type="text"
+                      value={newNoteTitle}
+                      onChange={(e) => setNewNoteTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newNoteTitle.trim()) handleCreateNote();
+                        if (e.key === 'Escape') {
+                          setIsCreatingNote(false);
+                          setNewNoteTitle('');
+                          setNewNoteTags([]);
+                        }
+                      }}
+                      placeholder="Note title..."
+                      className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleCreateNote}
+                      disabled={!newNoteTitle.trim()}
+                      className="text-[12px] text-black/50 hover:text-black transition-colors disabled:opacity-30"
+                    >
+                      create
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsCreatingNote(false);
+                        setNewNoteTitle('');
+                        setNewNoteTags([]);
+                        setIsAddingTag(false);
+                        setNewTagInput('');
+                      }}
+                      className="text-[12px] text-black/30 hover:text-black/50 transition-colors"
+                    >
+                      cancel
+                    </button>
+                  </div>
+                  
+                  {/* Tags selection - combine existing and custom tags */}
+                  <div className="pl-10 flex flex-wrap gap-2">
+                    {/* Show all existing tags from library */}
+                    {Object.values(displayTagCategories).flat().slice(0, 20).map((tag) => {
+                      const tagName = (tag as string).replace('#', '');
+                      const isSelected = newNoteTags.includes(tagName);
+                      return (
+                        <button
+                          key={tag as string}
+                          onClick={() => toggleNewNoteTag(tag as string)}
+                          className={`text-[10px] border rounded px-2 py-0.5 transition-colors ${
+                            isSelected 
+                              ? 'bg-black text-white border-black' 
+                              : 'text-black/50 border-black/20 hover:border-black/40'
+                          }`}
+                        >
+                          {tagName}
+                        </button>
+                      );
+                    })}
+                    
+                    {/* Show custom tags that aren't in the library */}
+                    {newNoteTags
+                      .filter(tag => !Object.values(displayTagCategories).flat().some(t => (t as string).replace('#', '') === tag))
+                      .map(tag => (
+                        <button
+                          key={`custom-${tag}`}
+                          onClick={() => toggleNewNoteTag(tag)}
+                          className="text-[10px] border rounded px-2 py-0.5 transition-colors bg-black text-white border-black"
+                        >
+                          {tag}
+                        </button>
+                      ))
+                    }
+                    
+                    {/* Add custom tag button/input */}
+                    {isAddingTag ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddCustomTag();
+                            if (e.key === 'Escape') {
+                              setIsAddingTag(false);
+                              setNewTagInput('');
+                            }
+                          }}
+                          placeholder="tag name"
+                          className="text-[10px] border border-black rounded px-2 py-0.5 w-20 outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleAddCustomTag}
+                          className="text-[10px] text-black/50 hover:text-black"
+                        >
+                          ✓
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setIsAddingTag(true)}
+                        className="text-[10px] border border-black rounded px-2 py-0.5 text-black hover:bg-black hover:text-white transition-colors"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsCreatingNote(true)}
+                  className="flex items-center gap-4 text-black/40 hover:text-black/60 transition-colors"
+                >
+                  <span className="text-[14px] w-6">+</span>
+                  <span className="text-[14px]">New note</span>
+                </button>
+              )}
+            </div>
+          </div>
+          )}
+          
+          {/* Today view - Daily notepad */}
+          {indexFilter === 'today' && (
+            <div className="flex-1 overflow-y-auto px-8 pt-6">
+              {/* Tasks section */}
+              <div className="mb-8">
+                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
+                
+                {/* Task list */}
+                <div className="space-y-2 mb-4">
+                  {todayTasks.map((task, idx) => (
+                    <div 
+                      key={idx} 
+                      className="flex items-center gap-3 group"
+                    >
+                      <button
+                        onClick={() => toggleTask(idx)}
+                        className="text-[14px] text-black/50 hover:text-black transition-colors"
+                      >
+                        [{task.completed ? '✓' : ' '}]
+                      </button>
+                      <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                        {task.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Add task input */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[14px] text-black/30">[+]</span>
+                  <input
+                    type="text"
+                    value={newTask}
+                    onChange={(e) => setNewTask(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                    placeholder="Add a task..."
+                    className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
+                  />
+                </div>
+              </div>
+              
+              {/* Divider */}
+              <div className="h-px bg-black/10 mb-8" />
+              
+              {/* Notes section */}
+              <div>
+                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Notes</p>
+                <textarea
+                  value={todayNotes}
+                  onChange={(e) => setTodayNotes(e.target.value)}
+                  placeholder="Capture your thoughts..."
+                  className="w-full h-[300px] text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed"
+                />
+              </div>
+              
+              {/* Save to Index section */}
+              <div className="mt-12 pt-3 border-t border-black/10 flex items-center justify-between">
+                <p className="text-[11px] text-black/30">
+                  auto-saves at 11pm
+                </p>
+                <button
+                  onClick={saveDailyToIndex}
+                  disabled={!todayNotes.trim() && todayTasks.length === 0}
+                  className="text-[11px] text-black/50 hover:text-black transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {dailySaved ? '✓ saved' : 'save to index →'}
+                </button>
+        </div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Right section - Ventures folders */}
+      {stage === 'second' && activeView === 'ventures' && (
+        <div 
+          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          style={{ 
+            left: '32%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.5s ease-in',
+          }}
+        >
+          {/* Folder tabs - each tab is a company */}
+          <div className="flex items-end px-10 pt-10">
+            {[
+              { name: 'evos', link: 'https://evos.com' },
+              { name: 'studio', link: 'https://studio.com' },
+              { name: 'labs', link: 'https://labs.com' },
+              { name: 'fund', link: 'https://fund.com' },
+            ].map((company, idx) => (
+              <button
+                key={company.name}
+                onClick={() => setSelectedFolder(idx)}
+                className={`relative px-5 py-2.5 text-[11px] tracking-wide lowercase transition-all ${
+                  selectedFolder === idx 
+                    ? 'text-black z-10' 
+                    : 'text-black/30 hover:text-black/50'
+                }`}
+                style={{
+                  background: selectedFolder === idx ? '#fffffc' : 'transparent',
+                  marginBottom: selectedFolder === idx ? '-2px' : '0',
+                  borderTop: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
+                  borderLeft: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
+                  borderRight: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
+                }}
+              >
+                {company.name}
+              </button>
+            ))}
+          </div>
+          
+          {/* Folder body - contains image and link */}
+          <div 
+            className="flex-1 mx-10 mb-10 relative flex flex-col items-center justify-center"
+            style={{
+              background: '#fffffc',
+              border: '2px solid black',
+              borderTop: '2px solid black',
+            }}
+          >
+            {/* Subtle grid pattern */}
+            <div 
+              className="absolute inset-0 opacity-[0.015]"
+              style={{
+                backgroundImage: `
+                  linear-gradient(black 1px, transparent 1px),
+                  linear-gradient(90deg, black 1px, transparent 1px)
+                `,
+                backgroundSize: '8px 8px',
+              }}
+            />
+            
+            {/* Corner accents */}
+            <div className="absolute top-4 left-4 w-3 h-3 border-l-2 border-t-2 border-black/15" />
+            <div className="absolute top-4 right-4 w-3 h-3 border-r-2 border-t-2 border-black/15" />
+            <div className="absolute bottom-4 left-4 w-3 h-3 border-l-2 border-b-2 border-black/15" />
+            <div className="absolute bottom-4 right-4 w-3 h-3 border-r-2 border-b-2 border-black/15" />
+            
+            {/* Company image placeholder */}
+            <div 
+              className="w-48 h-48 border border-black/20 mb-6 flex items-center justify-center"
+              style={{ background: '#f8f8f6' }}
+            >
+              <span className="text-[10px] text-black/20 uppercase tracking-widest">image</span>
+            </div>
+            
+            {/* Link */}
+            <a 
+              href={
+                selectedFolder === 0 ? 'https://evos.com' :
+                selectedFolder === 1 ? 'https://studio.com' :
+                selectedFolder === 2 ? 'https://labs.com' :
+                'https://fund.com'
+              }
             target="_blank"
             rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+              className="text-[11px] text-black/40 hover:text-black transition-colors underline underline-offset-2"
+            >
+              {selectedFolder === 0 ? 'evos.com' :
+               selectedFolder === 1 ? 'studio.com' :
+               selectedFolder === 2 ? 'labs.com' :
+               'fund.com'} →
+            </a>
+          </div>
         </div>
-      </main>
+      )}
+      
+      {/* Right section - Archive image grid */}
+      {stage === 'second' && activeView === 'archive' && (
+        <div 
+          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          style={{ 
+            left: '32%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.5s ease-in',
+          }}
+        >
+          {/* Header with upload button */}
+          {!selectedArchiveImage && (
+            <div className="flex justify-end items-center px-8 pt-4">
+              <button
+                onClick={() => setIsUploadingImage(true)}
+                className="text-[18px] text-black/40 hover:text-black transition-colors"
+              >
+                +
+              </button>
+            </div>
+          )}
+          
+          {/* Upload modal */}
+          {isUploadingImage && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ backgroundColor: 'rgba(255, 255, 252, 0.95)' }}>
+              <div className="w-full max-w-sm px-8">
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span className="text-[14px] text-black">upload</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsUploadingImage(false);
+                      setSelectedFile(null);
+                      setUploadForm({ title: '', description: '', category: 'design' });
+                    }}
+                    className="text-[12px] text-black/30 hover:text-black"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {/* File input */}
+                <div className="mb-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="text-[12px] text-black/50"
+                  />
+                </div>
+                
+                {/* Title */}
+                <input
+                  type="text"
+                  placeholder="title"
+                  value={uploadForm.title}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
+                />
+                
+                {/* Description */}
+                <input
+                  type="text"
+                  placeholder="description (optional)"
+                  value={uploadForm.description}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
+                />
+                
+                {/* Category */}
+                <select
+                  value={uploadForm.category}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-6 outline-none"
+                >
+                  {archiveCategories.filter(c => c !== 'all').map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                
+                {/* Upload button */}
+                {/* Upload button and status */}
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleImageUpload}
+                    disabled={!selectedFile || !uploadForm.title.trim() || uploadStatus === 'uploading'}
+                    className="text-[12px] text-black/50 hover:text-black transition-colors disabled:opacity-30"
+                  >
+                    {uploadStatus === 'uploading' ? 'uploading...' : 'upload →'}
+                  </button>
+                  
+                  {uploadStatus === 'success' && (
+                    <span className="text-[12px] text-green-600">✓ uploaded</span>
+                  )}
+                  {uploadStatus === 'error' && (
+                    <span className="text-[12px] text-red-500">✕ failed</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Image detail view */}
+          {selectedArchiveImage && (() => {
+            const image = archiveImagesData?.find(img => img._id === selectedArchiveImage);
+            if (!image) return null;
+            return (
+              <div className="flex-1 flex flex-col items-center justify-center px-8 py-8">
+                {/* Back button */}
+                <button
+                  onClick={() => setSelectedArchiveImage(null)}
+                  className="absolute top-4 left-8 text-[12px] text-black/40 hover:text-black transition-colors"
+                >
+                  ← back
+                </button>
+                
+                {/* Delete button */}
+                <button
+                  onClick={async () => {
+                    if (confirm('Delete this image?')) {
+                      await deleteImageMutation({ id: image._id });
+                      setSelectedArchiveImage(null);
+                    }
+                  }}
+                  className="absolute top-4 right-8 text-[12px] text-black/30 hover:text-red-500 transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+                
+                {/* Large centered image */}
+                <div className="max-w-[70%] max-h-[70vh]">
+                  {image.url && (
+                    <img 
+                      src={image.url} 
+                      alt={image.title}
+                      className="max-w-full max-h-[70vh] object-contain"
+                    />
+                  )}
+                </div>
+                
+                {/* Title and description - right aligned */}
+                <div className="w-full max-w-[70%] mt-3 text-right">
+                  <h2 className="text-[14px] text-black">{image.title}</h2>
+                  {image.description && (
+                    <p className="text-[12px] text-black/50 mt-0.5">{image.description}</p>
+                  )}
+                  <p className="text-[11px] text-black/30 mt-1">
+                    {new Date(image.uploadedAt).toLocaleDateString('en-GB', { 
+                      day: '2-digit', 
+                      month: '2-digit', 
+                      year: 'numeric' 
+                    })}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+          
+          {/* Image grid - clean rows */}
+          {!selectedArchiveImage && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-8 pt-4 pb-4">
+                <div className="grid grid-cols-3 gap-4 items-end">
+                  {(archiveImagesData || []).map((image) => (
+                    <div 
+                      key={image._id}
+                      onClick={() => setSelectedArchiveImage(image._id)}
+                      className="hover:opacity-70 transition-opacity cursor-pointer overflow-hidden"
+                      style={{ 
+                        maxHeight: '280px',
+                      }}
+                    >
+                      {image.url && (
+                        <img 
+                          src={image.url} 
+                          alt={image.title}
+                          className="w-full h-auto object-contain"
+                          style={{
+                            maxHeight: '280px',
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Image count at bottom - fixed */}
+              {(archiveImagesData?.length || 0) > 0 && (
+                <div className="px-8 pb-6 pt-2">
+                  <p className="text-[12px] text-black/30 text-center">
+                    {archiveImagesData?.length} images
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Note detail view */}
+      {stage === 'second' && activeView === 'index' && selectedNoteId && selectedNoteData && (
+        <div 
+          className="absolute top-0 bottom-0 right-0 flex"
+          style={{ 
+            left: '32%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.3s ease-in',
+          }}
+        >
+          {/* Back button / close */}
+          <button
+            onClick={() => setSelectedNoteId(null)}
+            className="absolute top-4 left-8 text-[12px] text-black/50 hover:text-black transition-colors"
+          >
+            ← back
+          </button>
+          
+          {/* Main content - left side */}
+          <div className="flex-1 px-8 pt-16 pr-8">
+            {/* Editable Title - always editable, seamless */}
+            <input
+              type="text"
+              value={editingTitle ?? selectedNoteData.title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              className="text-[18px] font-semibold text-black uppercase tracking-wide mb-2 w-full bg-transparent outline-none"
+            />
+            
+            {/* Tags row - in containers like table */}
+            <div className="flex gap-2 mb-8">
+              {selectedNoteData.tags.map(tag => (
+                <button 
+                  key={tag} 
+                  onClick={() => {
+                    const tagWithHash = `#${tag}`;
+                    if (!selectedTags.includes(tagWithHash)) {
+                      setSelectedTags(prev => [...prev, tagWithHash]);
+                    }
+                    setSelectedNoteId(null);
+                  }}
+                  className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+            
+            {/* Editable Note body - always editable, seamless */}
+            <textarea
+              value={editingBody ?? selectedNoteData.body ?? ''}
+              onChange={(e) => handleBodyChange(e.target.value)}
+              placeholder="Start writing..."
+              className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] min-h-[400px] bg-transparent outline-none resize-none placeholder:text-black/30"
+            />
+          </div>
+          
+          {/* Sidebar toggle button */}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="absolute top-4 right-4 text-[12px] text-black/40 hover:text-black transition-colors z-10"
+          >
+            {sidebarCollapsed ? '←' : '→'}
+          </button>
+          
+          {/* Sidebar - right side (collapsible) */}
+          <div 
+            className={`flex flex-col gap-4 border-l border-black/5 transition-all duration-300 overflow-y-auto ${
+              sidebarCollapsed ? 'w-0 px-0 opacity-0' : 'w-56 px-4 opacity-100'
+            }`}
+            style={{ paddingTop: sidebarCollapsed ? 0 : '1rem', paddingBottom: '1rem' }}
+          >
+            {/* Date and timestamp */}
+            <div className="min-w-[200px]">
+              <p className="text-[14px] font-medium text-black">
+                {selectedNoteData.date}
+              </p>
+              <p className="text-[12px] text-black/50">
+                {selectedNoteData.timestamp}
+              </p>
+            </div>
+            
+            {/* Analyze Button */}
+            <button
+              onClick={handleAnalyzeNote}
+              disabled={isAnalyzing}
+              className="w-full py-2 text-[11px] font-medium border border-black/20 rounded hover:bg-black/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isAnalyzing ? 'analyzing...' : selectedNoteData.lastAnalyzed ? 're-analyze' : 'analyze'}
+            </button>
+            
+            {/* Bullets */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">bullets</p>
+              {selectedNoteData.bullets && selectedNoteData.bullets.length > 0 ? (
+                <div className="space-y-1">
+                  {selectedNoteData.bullets.map((bullet, idx) => (
+                    <p key={idx} className="text-[11px] text-black/70">• {renderMarkdown(bullet)}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-black/30">click analyze to extract</p>
+              )}
+            </div>
+            
+            {/* Questions */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">questions</p>
+              {selectedNoteData.furtherQuestions && selectedNoteData.furtherQuestions.length > 0 ? (
+                <div className="space-y-1">
+                  {selectedNoteData.furtherQuestions.map((q, idx) => (
+                    <p key={idx} className="text-[11px] text-black/70">• {renderMarkdown(q)}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-black/30">none yet</p>
+              )}
+            </div>
+            
+            {/* Brief */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">brief</p>
+              {selectedNoteData.aiSummary ? (
+                <p className="text-[11px] text-black/70 leading-relaxed">{renderMarkdown(selectedNoteData.aiSummary)}</p>
+              ) : (
+                <p className="text-[11px] text-black/30">none yet</p>
+              )}
+            </div>
+            
+            {/* Related */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">related</p>
+              {selectedNoteData.relatedNotes && selectedNoteData.relatedNotes.length > 0 ? (
+                <div className="space-y-1">
+                  {selectedNoteData.relatedNotes.map((noteId, idx) => {
+                    const relatedNote = indexItems.find(item => item._id === noteId);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedNoteId(noteId)}
+                        className="text-[11px] text-black/70 hover:text-black transition-colors block text-left"
+                      >
+                        • {relatedNote?.title || 'Related note'}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[11px] text-black/30">none found</p>
+              )}
+            </div>
+            
+            {/* Links */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">links</p>
+              {selectedNoteData.links && selectedNoteData.links.length > 0 ? (
+                <div className="space-y-1">
+                  {selectedNoteData.links.map((link, idx) => (
+                    <a
+                      key={idx}
+                      href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+                      className="text-[11px] text-blue-600 hover:underline block truncate"
+          >
+                      {link.title || link.url}
+          </a>
+                  ))}
+        </div>
+              ) : (
+                <p className="text-[11px] text-black/30">none detected</p>
+              )}
     </div>
+          </div>
+        </div>
+      )}
+
+      {/* Character container - Stage 1: Center of screen, walks off right */}
+      {stage === 'first' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <PixelCharacter 
+            pixelSize={3} 
+            onPhaseChange={handlePhaseChange}
+            startPhase="walking_right"
+          />
+        </div>
+      )}
+      </main>
   );
 }
