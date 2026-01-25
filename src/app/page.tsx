@@ -8,17 +8,21 @@ import { PixelCharacter, AnimationPhase } from "@/components/PixelCharacter";
 
 type Stage = 'password' | 'first' | 'transitioning' | 'second';
 
-// Hook to detect mobile screen
+// Hook to detect mobile screen with SSR-safe handling
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
+    setMounted(true);
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   
+  // Return false during SSR, then actual value after mount
+  if (!mounted) return false;
   return isMobile;
 }
 
