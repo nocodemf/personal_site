@@ -769,7 +769,8 @@ export default function Home() {
                           value={todayNotes}
                           onChange={(e) => setTodayNotes(e.target.value)}
                           placeholder="Capture your thoughts..."
-                          className="w-full h-[200px] text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30"
+                          className="w-full flex-1 text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30"
+                          style={{ minHeight: 'calc(100vh - 380px)' }}
                         />
                       </div>
                     </div>
@@ -1636,7 +1637,8 @@ export default function Home() {
                     value={todayNotes}
                     onChange={(e) => setTodayNotes(e.target.value)}
                     placeholder="Capture your thoughts..."
-                    className="w-full h-[200px] text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed"
+                    className="w-full flex-1 text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed"
+                    style={{ minHeight: 'calc(100vh - 350px)' }}
                   />
                 </div>
               </div>
