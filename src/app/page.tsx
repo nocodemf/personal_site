@@ -1741,6 +1741,7 @@ export default function Home() {
                       ? 'translateX(-110%)' 
                       : 'translateX(110%)',
                   opacity: selectedFolder === 0 ? 1 : 0,
+                  zIndex: selectedFolder === 0 ? 10 : 0,
                 }}
               >
                 {/* Background image */}
@@ -1775,6 +1776,7 @@ export default function Home() {
                       ? 'translateX(-110%)' 
                       : 'translateX(110%)',
                   opacity: selectedFolder === 1 ? 1 : 0,
+                  zIndex: selectedFolder === 1 ? 10 : 0,
                 }}
               >
                 {/* Inner card */}
@@ -1791,7 +1793,7 @@ export default function Home() {
                   {/* Company name - Inter */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span 
-                      className="text-[100px] font-light text-white/90"
+                      className="text-[100px] font-light text-white/90 text-center"
                       style={{ letterSpacing: '-6px', fontFamily: 'var(--font-inter)' }}
                     >
                       Exa Intelligence
@@ -1812,6 +1814,7 @@ export default function Home() {
                       ? 'translateX(-110%)' 
                       : 'translateX(110%)',
                   opacity: selectedFolder === 2 ? 1 : 0,
+                  zIndex: selectedFolder === 2 ? 10 : 0,
                 }}
               >
                 {/* Inner card */}
