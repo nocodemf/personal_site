@@ -1697,166 +1697,165 @@ export default function Home() {
             transition: 'opacity 0.5s ease-in',
           }}
         >
-          {/* Stacked cards container with folder tabs */}
+          {/* Carousel cards container with folder tabs */}
           <div className="absolute top-6 left-0 right-0 bottom-8">
-            {/* Tab 1 - Holding */}
-            <button
-              onClick={() => setSelectedFolder(0)}
-              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
-                selectedFolder === 0 
-                  ? 'text-black bg-[rgba(30,30,30,0.3)]' 
-                  : 'text-black/40 hover:text-black/60'
-              }`}
-              style={{ 
-                left: '20px', 
-                top: '0',
-                zIndex: selectedFolder === 0 ? 31 : 26,
-              }}
-            >
-              holding
-            </button>
-            
-            {/* Tab 2 - Intelligence */}
-            <button
-              onClick={() => setSelectedFolder(1)}
-              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
-                selectedFolder === 1 
-                  ? 'text-black bg-[rgba(255,255,252,0.4)]' 
-                  : 'text-black/40 hover:text-black/60'
-              }`}
-              style={{ 
-                left: '140px', 
-                top: '0',
-                zIndex: selectedFolder === 1 ? 31 : 16,
-              }}
-            >
-              intelligence
-            </button>
-            
-            {/* Tab 3 - Application */}
-            <button
-              onClick={() => setSelectedFolder(2)}
-              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
-                selectedFolder === 2 
-                  ? 'text-black bg-[rgba(255,255,252,0.4)]' 
-                  : 'text-black/40 hover:text-black/60'
-              }`}
-              style={{ 
-                left: '280px', 
-                top: '0',
-                zIndex: selectedFolder === 2 ? 31 : 11,
-              }}
-            >
-              application
-            </button>
-            {/* Card 1 - Holding/Labs (front/leftmost) - dark glass */}
-            <div 
-              onClick={() => setSelectedFolder(0)}
-              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
-              style={{
-                left: '20px',
-                top: '36px',
-                width: 'calc(100% - 100px)',
-                height: 'calc(100% - 50px)',
-                background: 'rgba(30, 30, 30, 0.4)',
-                backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 0 ? 30 : 25,
-              }}
-            >
-              {/* Background image with opacity */}
-              <div 
-                className="absolute inset-0 opacity-60"
-                style={{ 
-                  backgroundImage: 'url(/venture-mountains.png)',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center bottom',
-                }}
-              />
-              {/* Company name */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span 
-                  className="text-[140px] font-light text-white/80"
-                  style={{ letterSpacing: '-10px' }}
-                >
-                  xa Labs
-                </span>
-              </div>
+            {/* Folder tabs */}
+            <div className="flex gap-1 mb-0">
+              <button
+                onClick={() => setSelectedFolder(0)}
+                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
+                  selectedFolder === 0 
+                    ? 'text-black bg-[rgba(30,30,30,0.4)]' 
+                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                }`}
+              >
+                holding
+              </button>
+              <button
+                onClick={() => setSelectedFolder(1)}
+                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
+                  selectedFolder === 1 
+                    ? 'text-black bg-[rgba(255,255,252,0.5)]' 
+                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                }`}
+              >
+                intelligence
+              </button>
+              <button
+                onClick={() => setSelectedFolder(2)}
+                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
+                  selectedFolder === 2 
+                    ? 'text-black bg-[rgba(255,255,252,0.5)]' 
+                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                }`}
+              >
+                application
+              </button>
             </div>
             
-            {/* Card 2 - Intelligence/Studio (middle) - light glass with inner card */}
-            <div 
-              onClick={() => setSelectedFolder(1)}
-              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
-              style={{
-                left: '140px',
-                top: '36px',
-                width: 'calc(100% - 180px)',
-                height: 'calc(100% - 50px)',
-                background: 'rgba(255, 255, 252, 0.2)',
-                backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 1 ? 30 : 15,
-              }}
-            >
-              {/* Inner card with padding */}
-              <div className="absolute inset-[36px] rounded-xl overflow-hidden bg-[#e8e8e3]">
-                {/* Background image */}
+            {/* Cards carousel container */}
+            <div className="relative w-full h-[calc(100%-40px)] overflow-hidden">
+              {/* Card 0 - Holding/Labs - dark glass */}
+              <div 
+                onClick={() => setSelectedFolder(0)}
+                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                style={{
+                  width: 'calc(100% - 60px)',
+                  height: '100%',
+                  background: 'rgba(30, 30, 30, 0.4)',
+                  backdropFilter: 'blur(20px)',
+                  transform: selectedFolder === 0 
+                    ? 'translateX(0) scale(1)' 
+                    : selectedFolder === 1 
+                      ? 'translateX(-85%) scale(0.9)' 
+                      : 'translateX(-90%) scale(0.85)',
+                  zIndex: selectedFolder === 0 ? 30 : selectedFolder === 1 ? 20 : 10,
+                  opacity: selectedFolder === 0 ? 1 : 0.7,
+                }}
+              >
+                {/* Background image with opacity */}
                 <div 
-                  className="absolute inset-0"
+                  className="absolute inset-0 opacity-60"
                   style={{ 
-                    backgroundImage: 'url(/venture-port.png)',
+                    backgroundImage: 'url(/venture-mountains.png)',
                     backgroundSize: 'cover',
-                    backgroundPosition: 'center',
+                    backgroundPosition: 'center bottom',
                   }}
                 />
-                {/* Dark overlay */}
-                <div className="absolute inset-0 bg-black/30" />
                 {/* Company name */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span 
-                    className="text-[140px] font-light text-white/90"
-                    style={{ letterSpacing: '-10px' }}
+                    className="text-[120px] font-light text-white/80"
+                    style={{ letterSpacing: '-8px' }}
                   >
-                    Evos
+                    xa Labs
                   </span>
                 </div>
               </div>
-            </div>
-            
-            {/* Card 3 - Application/Evos (back/rightmost) - light glass with inner card */}
-            <div 
-              onClick={() => setSelectedFolder(2)}
-              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
-              style={{
-                left: '280px',
-                top: '36px',
-                width: 'calc(100% - 300px)',
-                height: 'calc(100% - 50px)',
-                background: 'rgba(255, 255, 252, 0.2)',
-                backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 2 ? 30 : 10,
-              }}
-            >
-              {/* Inner card with padding */}
-              <div className="absolute inset-[36px] rounded-xl overflow-hidden bg-[#e8e8e3]">
-                {/* Background image */}
-                <div 
-                  className="absolute inset-0"
-                  style={{ 
-                    backgroundImage: 'url(/venture-market.png)',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                  }}
-                />
-                {/* Dark overlay */}
-                <div className="absolute inset-0 bg-black/30" />
-                {/* Company name */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span 
-                    className="text-[140px] font-light text-white/90"
-                    style={{ letterSpacing: '-10px' }}
-                  >
-                    Evos
-                  </span>
+              
+              {/* Card 1 - Intelligence - light glass with inner card */}
+              <div 
+                onClick={() => setSelectedFolder(1)}
+                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                style={{
+                  width: 'calc(100% - 60px)',
+                  height: '100%',
+                  background: 'rgba(255, 255, 252, 0.2)',
+                  backdropFilter: 'blur(20px)',
+                  transform: selectedFolder === 1 
+                    ? 'translateX(0) scale(1)' 
+                    : selectedFolder === 0 
+                      ? 'translateX(90%) scale(0.9)' 
+                      : 'translateX(-85%) scale(0.9)',
+                  zIndex: selectedFolder === 1 ? 30 : selectedFolder === 0 ? 20 : 20,
+                  opacity: selectedFolder === 1 ? 1 : 0.7,
+                }}
+              >
+                {/* Inner card with padding */}
+                <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                  {/* Background image */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{ 
+                      backgroundImage: 'url(/venture-port.png)',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                  {/* Dark overlay */}
+                  <div className="absolute inset-0 bg-black/30" />
+                  {/* Company name */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span 
+                      className="text-[120px] font-light text-white/90"
+                      style={{ letterSpacing: '-8px' }}
+                    >
+                      Evos
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Card 2 - Application - light glass with inner card */}
+              <div 
+                onClick={() => setSelectedFolder(2)}
+                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                style={{
+                  width: 'calc(100% - 60px)',
+                  height: '100%',
+                  background: 'rgba(255, 255, 252, 0.2)',
+                  backdropFilter: 'blur(20px)',
+                  transform: selectedFolder === 2 
+                    ? 'translateX(0) scale(1)' 
+                    : selectedFolder === 1 
+                      ? 'translateX(90%) scale(0.9)' 
+                      : 'translateX(95%) scale(0.85)',
+                  zIndex: selectedFolder === 2 ? 30 : selectedFolder === 1 ? 20 : 10,
+                  opacity: selectedFolder === 2 ? 1 : 0.7,
+                }}
+              >
+                {/* Inner card with padding */}
+                <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                  {/* Background image */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{ 
+                      backgroundImage: 'url(/venture-market.png)',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                  {/* Dark overlay */}
+                  <div className="absolute inset-0 bg-black/30" />
+                  {/* Company name */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span 
+                      className="text-[120px] font-light text-white/90"
+                      style={{ letterSpacing: '-8px' }}
+                    >
+                      Evos
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
