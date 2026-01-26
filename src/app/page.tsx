@@ -117,20 +117,20 @@ export default function Home() {
       sessionStorage.setItem(SESSION_KEY, 'true');
     }
   }, [stage]);
-  const [selectedFolder, setSelectedFolder] = useState<number>(2); // Default to Evos (application) - front card
+  const [selectedFolder, setSelectedFolder] = useState<number>(0);
   
   // Venture KPI data
   const ventureKPIs = [
-    { // holding - Labs
-      name: 'labs',
+    { // evos
+      name: 'evos',
       metrics: [
-        { label: 'experiments', value: 90, display: '30+' },
-        { label: 'raised', value: 25, display: '$500K' },
-        { label: 'launches', value: 35, display: '8' },
-        { label: 'team', value: 15, display: '3' },
+        { label: 'revenue', value: 85, display: '$2.4M' },
+        { label: 'raised', value: 60, display: '$5M' },
+        { label: 'operators', value: 45, display: '120+' },
+        { label: 'waitlist', value: 70, display: '2.4K' },
       ]
     },
-    { // intelligence - Studio
+    { // studio
       name: 'studio',
       metrics: [
         { label: 'revenue', value: 40, display: '$400K' },
@@ -139,13 +139,22 @@ export default function Home() {
         { label: 'team', value: 20, display: '4' },
       ]
     },
-    { // application - Evos
-      name: 'evos',
+    { // labs
+      name: 'labs',
       metrics: [
-        { label: 'revenue', value: 85, display: '$2.4M' },
-        { label: 'raised', value: 60, display: '$5M' },
-        { label: 'operators', value: 45, display: '120+' },
-        { label: 'waitlist', value: 70, display: '2.4K' },
+        { label: 'experiments', value: 90, display: '30+' },
+        { label: 'raised', value: 25, display: '$500K' },
+        { label: 'launches', value: 35, display: '8' },
+        { label: 'team', value: 15, display: '3' },
+      ]
+    },
+    { // fund
+      name: 'fund',
+      metrics: [
+        { label: 'deployed', value: 55, display: '$2M' },
+        { label: 'raised', value: 80, display: '$10M' },
+        { label: 'portfolio', value: 40, display: '15' },
+        { label: 'exits', value: 20, display: '2' },
       ]
     },
   ];
@@ -648,12 +657,19 @@ export default function Home() {
               
               {/* Navigation underneath character */}
               <div 
-                className="mt-12 flex flex-col items-center gap-4"
+                className="mt-12 flex flex-col items-center gap-6"
                 style={{
                   opacity: showAbout ? 1 : 0,
                   transition: 'opacity 0.5s ease-in',
                 }}
               >
+                {/* Concealed logout - tap on "urav" */}
+                <button 
+                  onClick={handleLogout}
+                  className="text-[14px] font-medium text-black mb-2 hover:text-black/60 transition-colors"
+                >
+                  urav
+                </button>
                 <div className="flex gap-6">
                   <button 
                     onClick={() => setActiveView('index')} 
@@ -674,12 +690,6 @@ export default function Home() {
                     archive
                   </button>
                 </div>
-                <button 
-                  onClick={handleLogout}
-                  className="text-[12px] text-black/20 hover:text-black/40 transition-colors mt-4"
-                >
-                  logout
-                </button>
               </div>
             </div>
           )}
@@ -1101,7 +1111,12 @@ export default function Home() {
               {' '}
               {currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
             </p>
-            <p className="text-[14px] font-medium text-black">urav</p>
+            <button 
+              onClick={handleLogout}
+              className="text-[14px] font-medium text-black hover:text-black/60 transition-colors cursor-pointer"
+            >
+              urav
+            </button>
           </div>
 
           {/* Character - positioned near top */}
@@ -1308,39 +1323,31 @@ export default function Home() {
               transition: 'opacity 0.5s ease-in',
             }}
           >
-            <div className="flex justify-between items-center">
+            <div className="flex justify-end gap-4">
               <button 
-                onClick={handleLogout}
-                className="text-[12px] text-black/30 hover:text-black/50 transition-opacity"
+                onClick={() => setActiveView('home')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'home' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
               >
-                logout
+                home
               </button>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setActiveView('home')} 
-                  className={`text-[14px] font-medium transition-opacity ${activeView === 'home' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-                >
-                  home
-                </button>
-                <button 
-                  onClick={() => setActiveView('index')} 
-                  className={`text-[14px] font-medium transition-opacity ${activeView === 'index' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-                >
-                  index
-                </button>
-                <button 
-                  onClick={() => setActiveView('ventures')} 
-                  className={`text-[14px] font-medium transition-opacity ${activeView === 'ventures' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-                >
-                  ventures
-                </button>
-                <button 
-                  onClick={() => setActiveView('archive')} 
-                  className={`text-[14px] font-medium transition-opacity ${activeView === 'archive' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-                >
-                  archive
-                </button>
-              </div>
+              <button 
+                onClick={() => setActiveView('index')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'index' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                index
+              </button>
+              <button 
+                onClick={() => setActiveView('ventures')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'ventures' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                ventures
+              </button>
+              <button 
+                onClick={() => setActiveView('archive')} 
+                className={`text-[14px] font-medium transition-opacity ${activeView === 'archive' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                archive
+              </button>
             </div>
           </div>
         </div>
