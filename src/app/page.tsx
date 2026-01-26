@@ -1697,45 +1697,67 @@ export default function Home() {
             transition: 'opacity 0.5s ease-in',
           }}
         >
-          {/* Tab labels - positioned above their respective cards */}
-          <div className="absolute top-6 left-8 flex items-center" style={{ gap: '110px' }}>
+          {/* Stacked cards container with folder tabs */}
+          <div className="absolute top-6 left-0 right-0 bottom-8">
+            {/* Tab 1 - Holding */}
             <button
               onClick={() => setSelectedFolder(0)}
-              className={`text-[16px] font-medium tracking-tight transition-colors ${
-                selectedFolder === 0 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
+                selectedFolder === 0 
+                  ? 'text-black bg-[rgba(30,30,30,0.3)]' 
+                  : 'text-black/40 hover:text-black/60'
               }`}
+              style={{ 
+                left: '20px', 
+                top: '0',
+                zIndex: selectedFolder === 0 ? 31 : 26,
+              }}
             >
               holding
             </button>
+            
+            {/* Tab 2 - Intelligence */}
             <button
               onClick={() => setSelectedFolder(1)}
-              className={`text-[16px] font-medium tracking-tight transition-colors ${
-                selectedFolder === 1 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
+                selectedFolder === 1 
+                  ? 'text-black bg-[rgba(255,255,252,0.4)]' 
+                  : 'text-black/40 hover:text-black/60'
               }`}
+              style={{ 
+                left: '140px', 
+                top: '0',
+                zIndex: selectedFolder === 1 ? 31 : 16,
+              }}
             >
               intelligence
             </button>
+            
+            {/* Tab 3 - Application */}
             <button
               onClick={() => setSelectedFolder(2)}
-              className={`text-[16px] font-medium tracking-tight transition-colors ${
-                selectedFolder === 2 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              className={`absolute text-[14px] font-medium tracking-tight transition-all duration-300 px-4 py-2 rounded-t-lg ${
+                selectedFolder === 2 
+                  ? 'text-black bg-[rgba(255,255,252,0.4)]' 
+                  : 'text-black/40 hover:text-black/60'
               }`}
+              style={{ 
+                left: '280px', 
+                top: '0',
+                zIndex: selectedFolder === 2 ? 31 : 11,
+              }}
             >
               application
             </button>
-          </div>
-          
-          {/* Stacked cards container - cards positioned left to right */}
-          <div className="absolute top-16 left-0 right-0 bottom-8">
             {/* Card 1 - Holding/Labs (front/leftmost) - dark glass */}
             <div 
               onClick={() => setSelectedFolder(0)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
+              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
                 left: '20px',
-                top: '20px',
+                top: '36px',
                 width: 'calc(100% - 100px)',
-                height: 'calc(100% - 40px)',
+                height: 'calc(100% - 50px)',
                 background: 'rgba(30, 30, 30, 0.4)',
                 backdropFilter: 'blur(20px)',
                 zIndex: selectedFolder === 0 ? 30 : 25,
@@ -1764,12 +1786,12 @@ export default function Home() {
             {/* Card 2 - Intelligence/Studio (middle) - light glass with inner card */}
             <div 
               onClick={() => setSelectedFolder(1)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
+              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
                 left: '140px',
-                top: '20px',
+                top: '36px',
                 width: 'calc(100% - 180px)',
-                height: 'calc(100% - 40px)',
+                height: 'calc(100% - 50px)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
                 zIndex: selectedFolder === 1 ? 30 : 15,
@@ -1800,15 +1822,15 @@ export default function Home() {
               </div>
             </div>
             
-            {/* Card 3 - Application/Evos (front/rightmost) - light glass with inner card */}
+            {/* Card 3 - Application/Evos (back/rightmost) - light glass with inner card */}
             <div 
               onClick={() => setSelectedFolder(2)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
+              className={`absolute rounded-b-xl rounded-tr-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
                 left: '280px',
-                top: '20px',
+                top: '36px',
                 width: 'calc(100% - 300px)',
-                height: 'calc(100% - 40px)',
+                height: 'calc(100% - 50px)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
                 zIndex: selectedFolder === 2 ? 30 : 10,
