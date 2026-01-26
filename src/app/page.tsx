@@ -216,10 +216,14 @@ export default function Home() {
   const [archiveFilter, setArchiveFilter] = useState<string | null>(null);
   const [archiveFilterExpanded, setArchiveFilterExpanded] = useState(true);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ title: '', description: '', category: 'design' });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // Multiple file upload support
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [fileMetadata, setFileMetadata] = useState<{ title: string; description: string }[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [uploadCategory, setUploadCategory] = useState('design');
   const [selectedArchiveImage, setSelectedArchiveImage] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   
   // Archive categories
   const archiveCategories = ['all', 'design', 'people', 'nature', 'food', 'travel', 'art', 'architecture'];
@@ -543,51 +547,94 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [todayNotes, todayTasks, dailySaved, processDailyNotesAction]);
   
-  // Handle image upload
+  // Handle multiple file selection
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    
+    const fileArray = Array.from(files);
+    setSelectedFiles(fileArray);
+    setFileMetadata(fileArray.map(() => ({ title: '', description: '' })));
+    setCurrentFileIndex(0);
+  };
+
+  // Update metadata for current file
+  const updateCurrentFileMetadata = (field: 'title' | 'description', value: string) => {
+    setFileMetadata(prev => {
+      const updated = [...prev];
+      updated[currentFileIndex] = { ...updated[currentFileIndex], [field]: value };
+      return updated;
+    });
+  };
+
+  // Navigate between files
+  const goToPrevFile = () => {
+    if (currentFileIndex > 0) {
+      setCurrentFileIndex(currentFileIndex - 1);
+    }
+  };
+
+  const goToNextFile = () => {
+    if (currentFileIndex < selectedFiles.length - 1) {
+      setCurrentFileIndex(currentFileIndex + 1);
+    }
+  };
+
+  // Handle image upload - uploads all files
   const handleImageUpload = async () => {
-    if (!selectedFile || !uploadForm.title.trim()) return;
+    if (selectedFiles.length === 0) return;
     
     setUploadStatus('uploading');
+    setUploadProgress({ current: 0, total: selectedFiles.length });
     
     try {
-      // Get upload URL
-      const uploadUrl = await generateUploadUrl();
-      
-      // Upload the file
-      const result = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': selectedFile.type },
-        body: selectedFile,
-      });
-      
-      const { storageId } = await result.json();
-      
-      // Get image dimensions
-      const img = new Image();
-      const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-        img.onload = () => resolve({ width: img.width, height: img.height });
-        img.src = URL.createObjectURL(selectedFile);
-      });
-      
-      // Save to database
-      await saveImageMutation({
-        storageId,
-        title: uploadForm.title.trim(),
-        description: uploadForm.description.trim() || undefined,
-        category: uploadForm.category,
-        width: dimensions.width,
-        height: dimensions.height,
-      });
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const metadata = fileMetadata[i];
+        
+        setUploadProgress({ current: i + 1, total: selectedFiles.length });
+        
+        // Get upload URL
+        const uploadUrl = await generateUploadUrl();
+        
+        // Upload the file
+        const result = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        
+        const { storageId } = await result.json();
+        
+        // Get image dimensions
+        const img = new Image();
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+          img.onload = () => resolve({ width: img.width, height: img.height });
+          img.src = URL.createObjectURL(file);
+        });
+        
+        // Save to database - title is optional now
+        await saveImageMutation({
+          storageId,
+          title: metadata.title.trim() || undefined,
+          description: metadata.description.trim() || undefined,
+          category: uploadCategory,
+          width: dimensions.width,
+          height: dimensions.height,
+        });
+      }
       
       // Show success
       setUploadStatus('success');
       
       // Reset form after delay
       setTimeout(() => {
-        setSelectedFile(null);
-        setUploadForm({ title: '', description: '', category: 'design' });
+        setSelectedFiles([]);
+        setFileMetadata([]);
+        setCurrentFileIndex(0);
+        setUploadCategory('design');
         setIsUploadingImage(false);
         setUploadStatus('idle');
+        setUploadProgress({ current: 0, total: 0 });
       }, 1500);
     } catch (error) {
       console.error('Upload failed:', error);
@@ -1053,7 +1100,7 @@ export default function Home() {
                     >
                       <img
                         src={image.url || ''}
-                        alt={image.title}
+                        alt={image.title || 'Untitled image'}
                         className="w-full h-full object-cover"
                       />
                     </div>
@@ -1094,13 +1141,15 @@ export default function Home() {
                 <div className="flex-1 overflow-y-auto px-4 pb-6">
                   <img
                     src={mobileSelectedImage.url || ''}
-                    alt={mobileSelectedImage.title}
+                    alt={mobileSelectedImage.title || 'Untitled image'}
                     className="w-full h-auto mb-4"
                   />
-                  <p className="text-[16px] font-medium text-black">{mobileSelectedImage.title}</p>
-                  {mobileSelectedImage.description && (
-                    <p className="text-[14px] text-black/60 mt-1">{mobileSelectedImage.description}</p>
-                  )}
+                  <p className={`text-[16px] font-medium ${mobileSelectedImage.title ? 'text-black' : 'text-black/40 italic'}`}>
+                    {mobileSelectedImage.title || '[untitled]'}
+                  </p>
+                  <p className={`text-[14px] mt-1 ${mobileSelectedImage.description ? 'text-black/60' : 'text-black/30 italic'}`}>
+                    {mobileSelectedImage.description || '[no text]'}
+                  </p>
                   <p className="text-[12px] text-black/40 mt-2">{formatDate(mobileSelectedImage.uploadedAt)}</p>
                 </div>
               </div>
@@ -1109,26 +1158,107 @@ export default function Home() {
 
           {/* Mobile Upload Modal */}
           {isUploadingImage && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#fffffc]/95 px-6">
-              <div className="w-full max-w-sm">
-                <div className="flex justify-between items-center mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span className="text-[14px] text-black">{selectedFile ? selectedFile.name : 'choose file'}</span>
-                    <input type="file" accept="image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} className="hidden" />
-                  </label>
-                  <button onClick={() => { setIsUploadingImage(false); setSelectedFile(null); }} className="text-[12px] text-black/30">✕</button>
+            <div className="absolute inset-0 z-20 flex flex-col bg-[#fffffc]/95 px-4 pt-4">
+              <div className="flex justify-between items-center mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  <span className="text-[14px] text-black">
+                    {selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}` : 'choose files'}
+                  </span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    multiple
+                    onChange={(e) => handleFilesSelected(e.target.files)} 
+                    className="hidden" 
+                  />
+                </label>
+                <button 
+                  onClick={() => { 
+                    setIsUploadingImage(false); 
+                    setSelectedFiles([]); 
+                    setFileMetadata([]);
+                    setCurrentFileIndex(0);
+                  }} 
+                  className="text-[12px] text-black/30"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {/* Preview and navigation */}
+              {selectedFiles.length > 0 && (
+                <div className="flex-1 overflow-y-auto">
+                  <div className="relative mb-4">
+                    <img 
+                      src={URL.createObjectURL(selectedFiles[currentFileIndex])} 
+                      alt="Preview"
+                      className="w-full h-auto max-h-[40vh] object-contain bg-black/5 rounded"
+                    />
+                    {selectedFiles.length > 1 && (
+                      <>
+                        <button
+                          onClick={goToPrevFile}
+                          disabled={currentFileIndex === 0}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center disabled:opacity-30"
+                        >
+                          ←
+                        </button>
+                        <button
+                          onClick={goToNextFile}
+                          disabled={currentFileIndex === selectedFiles.length - 1}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center disabled:opacity-30"
+                        >
+                          →
+                        </button>
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[11px] px-2 py-1 rounded">
+                          {currentFileIndex + 1} / {selectedFiles.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  <p className="text-[11px] text-black/40 mb-3 truncate">{selectedFiles[currentFileIndex].name}</p>
+                  
+                  <input 
+                    type="text" 
+                    placeholder="title (optional)" 
+                    value={fileMetadata[currentFileIndex]?.title || ''} 
+                    onChange={(e) => updateCurrentFileMetadata('title', e.target.value)} 
+                    className="w-full text-[14px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent placeholder:text-black/30" 
+                  />
+                  
+                  <input 
+                    type="text" 
+                    placeholder="description (optional)" 
+                    value={fileMetadata[currentFileIndex]?.description || ''} 
+                    onChange={(e) => updateCurrentFileMetadata('description', e.target.value)} 
+                    className="w-full text-[14px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent placeholder:text-black/30" 
+                  />
                 </div>
-                <input type="text" placeholder="title" value={uploadForm.title} onChange={(e) => setUploadForm(p => ({ ...p, title: e.target.value }))} className="w-full text-[14px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent placeholder:text-black/30" />
-                <select value={uploadForm.category} onChange={(e) => setUploadForm(p => ({ ...p, category: e.target.value }))} className="w-full text-[14px] border-b border-black/10 pb-2 mb-6 outline-none bg-transparent">
+              )}
+              
+              <div className="mt-auto pb-6">
+                <select 
+                  value={uploadCategory} 
+                  onChange={(e) => setUploadCategory(e.target.value)} 
+                  className="w-full text-[14px] border-b border-black/10 pb-2 mb-4 outline-none bg-transparent"
+                >
                   {archiveCategories.filter(c => c !== 'all').map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
-                <button onClick={handleImageUpload} disabled={!selectedFile || !uploadForm.title.trim()} className="text-[12px] text-black/50 hover:text-black disabled:opacity-30">
-                  {uploadStatus === 'uploading' ? 'uploading...' : 'upload →'}
+                
+                <button 
+                  onClick={handleImageUpload} 
+                  disabled={selectedFiles.length === 0 || uploadStatus === 'uploading'} 
+                  className="text-[12px] text-black/50 hover:text-black disabled:opacity-30"
+                >
+                  {uploadStatus === 'uploading' 
+                    ? `uploading ${uploadProgress.current}/${uploadProgress.total}...` 
+                    : `upload ${selectedFiles.length > 1 ? 'all' : ''} →`}
                 </button>
               </div>
             </div>
@@ -1499,7 +1629,7 @@ export default function Home() {
               </div>
             ) : (
               <h1 className="text-[24px] font-normal text-black">
-                {formatTodayDate()}
+                {indexFilter === 'graph' ? 'Knowledge Graph' : formatTodayDate()}
           </h1>
             )}
             
@@ -2034,9 +2164,9 @@ export default function Home() {
           {/* Upload modal */}
           {isUploadingImage && (
             <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ backgroundColor: 'rgba(255, 255, 252, 0.95)' }}>
-              <div className="w-full max-w-sm px-8">
+              <div className="w-full max-w-md px-8">
+                {/* Header */}
                 <div className="flex justify-between items-center mb-4">
-                  {/* Combined upload icon + button + file selector */}
                   <label className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -2044,20 +2174,23 @@ export default function Home() {
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                     <span className="text-[14px] text-black">
-                      {selectedFile ? selectedFile.name : 'choose file'}
+                      {selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected` : 'choose files'}
                     </span>
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                      multiple
+                      onChange={(e) => handleFilesSelected(e.target.files)}
                       className="hidden"
                     />
                   </label>
                   <button
                     onClick={() => {
                       setIsUploadingImage(false);
-                      setSelectedFile(null);
-                      setUploadForm({ title: '', description: '', category: 'design' });
+                      setSelectedFiles([]);
+                      setFileMetadata([]);
+                      setCurrentFileIndex(0);
+                      setUploadCategory('design');
                     }}
                     className="text-[12px] text-black/30 hover:text-black"
                   >
@@ -2065,28 +2198,74 @@ export default function Home() {
                   </button>
                 </div>
                 
-                {/* Title */}
-                <input
-                  type="text"
-                  placeholder="title"
-                  value={uploadForm.title}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
-                />
+                {/* Image preview and navigation */}
+                {selectedFiles.length > 0 && (
+                  <>
+                    <div className="relative mb-4">
+                      {/* Preview */}
+                      <div className="aspect-video bg-black/5 rounded flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={URL.createObjectURL(selectedFiles[currentFileIndex])} 
+                          alt="Preview"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                      
+                      {/* Navigation arrows */}
+                      {selectedFiles.length > 1 && (
+                        <>
+                          <button
+                            onClick={goToPrevFile}
+                            disabled={currentFileIndex === 0}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-black/60 hover:text-black disabled:opacity-30 transition-colors"
+                          >
+                            ←
+                          </button>
+                          <button
+                            onClick={goToNextFile}
+                            disabled={currentFileIndex === selectedFiles.length - 1}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-black/60 hover:text-black disabled:opacity-30 transition-colors"
+                          >
+                            →
+                          </button>
+                        </>
+                      )}
+                      
+                      {/* File counter */}
+                      {selectedFiles.length > 1 && (
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[11px] px-2 py-1 rounded">
+                          {currentFileIndex + 1} / {selectedFiles.length}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* File name */}
+                    <p className="text-[11px] text-black/40 mb-3 truncate">{selectedFiles[currentFileIndex].name}</p>
+                    
+                    {/* Title (optional) */}
+                    <input
+                      type="text"
+                      placeholder="title (optional)"
+                      value={fileMetadata[currentFileIndex]?.title || ''}
+                      onChange={(e) => updateCurrentFileMetadata('title', e.target.value)}
+                      className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
+                    />
+                    
+                    {/* Description (optional) */}
+                    <input
+                      type="text"
+                      placeholder="description (optional)"
+                      value={fileMetadata[currentFileIndex]?.description || ''}
+                      onChange={(e) => updateCurrentFileMetadata('description', e.target.value)}
+                      className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
+                    />
+                  </>
+                )}
                 
-                {/* Description */}
-                <input
-                  type="text"
-                  placeholder="description (optional)"
-                  value={uploadForm.description}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-4 outline-none focus:border-black/30 placeholder:text-black/30"
-                />
-                
-                {/* Category */}
+                {/* Category (applies to all) */}
                 <select
-                  value={uploadForm.category}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                  value={uploadCategory}
+                  onChange={(e) => setUploadCategory(e.target.value)}
                   className="w-full text-[14px] text-black bg-transparent border-b border-black/10 pb-2 mb-6 outline-none"
                 >
                   {archiveCategories.filter(c => c !== 'all').map(cat => (
@@ -2094,15 +2273,16 @@ export default function Home() {
                   ))}
                 </select>
                 
-                {/* Upload button */}
                 {/* Upload button and status */}
                 <div className="flex items-center gap-4">
                   <button
                     onClick={handleImageUpload}
-                    disabled={!selectedFile || !uploadForm.title.trim() || uploadStatus === 'uploading'}
+                    disabled={selectedFiles.length === 0 || uploadStatus === 'uploading'}
                     className="text-[12px] text-black/50 hover:text-black transition-colors disabled:opacity-30"
                   >
-                    {uploadStatus === 'uploading' ? 'uploading...' : 'upload →'}
+                    {uploadStatus === 'uploading' 
+                      ? `uploading ${uploadProgress.current}/${uploadProgress.total}...` 
+                      : `upload ${selectedFiles.length > 1 ? 'all' : ''} →`}
                   </button>
                   
                   {uploadStatus === 'success' && (
@@ -2151,7 +2331,7 @@ export default function Home() {
                   {image.url && (
                     <img 
                       src={image.url} 
-                      alt={image.title}
+                      alt={image.title || 'Untitled image'}
                       className="max-w-full max-h-[70vh] object-contain"
                     />
                   )}
@@ -2159,10 +2339,12 @@ export default function Home() {
                 
                 {/* Title and description - right aligned */}
                 <div className="w-full max-w-[70%] mt-3 text-right">
-                  <h2 className="text-[14px] text-black">{image.title}</h2>
-                  {image.description && (
-                    <p className="text-[12px] text-black/50 mt-0.5">{image.description}</p>
-                  )}
+                  <h2 className={`text-[14px] ${image.title ? 'text-black' : 'text-black/40 italic'}`}>
+                    {image.title || '[untitled]'}
+                  </h2>
+                  <p className={`text-[12px] mt-0.5 ${image.description ? 'text-black/50' : 'text-black/30 italic'}`}>
+                    {image.description || '[no text]'}
+                  </p>
                   <p className="text-[11px] text-black/30 mt-1">
                     {new Date(image.uploadedAt).toLocaleDateString('en-GB', { 
                       day: '2-digit', 
@@ -2192,7 +2374,7 @@ export default function Home() {
                       {image.url && (
                         <img 
                           src={image.url} 
-                          alt={image.title}
+                          alt={image.title || 'Untitled image'}
                           className="w-full h-auto object-contain"
                           style={{
                             maxHeight: '280px',

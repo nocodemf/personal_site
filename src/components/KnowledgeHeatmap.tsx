@@ -64,6 +64,11 @@ function gaussianKernel(distance: number, bandwidth: number): number {
   return Math.exp(-0.5 * Math.pow(distance / bandwidth, 2));
 }
 
+// Zoom constraints
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 5;
+const ZOOM_SENSITIVITY = 0.002;
+
 export function KnowledgeHeatmap({ 
   notes, 
   onNoteClick,
@@ -75,6 +80,13 @@ export function KnowledgeHeatmap({
   const [hoveredNote, setHoveredNote] = useState<HeatmapNote | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [dimensions, setDimensions] = useState({ width, height });
+  
+  // Zoom and pan state
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [hasMoved, setHasMoved] = useState(false);
   
   // Spatial index for fast hit detection
   const spatialIndexRef = useRef<Map<string, HeatmapNote[]>>(new Map());
@@ -115,6 +127,97 @@ export function KnowledgeHeatmap({
     spatialIndexRef.current = index;
   }, [notes, dimensions]);
 
+  // Convert screen coordinates to canvas coordinates (accounting for zoom/pan)
+  const screenToCanvas = useCallback((screenX: number, screenY: number) => {
+    const { width: w, height: h } = dimensions;
+    const centerX = w / 2;
+    const centerY = h / 2;
+    
+    // Reverse the transform: first subtract pan, then divide by zoom relative to center
+    const canvasX = (screenX - centerX - panOffset.x) / zoom + centerX;
+    const canvasY = (screenY - centerY - panOffset.y) / zoom + centerY;
+    
+    return { x: canvasX, y: canvasY };
+  }, [zoom, panOffset, dimensions]);
+
+  // Handle zoom with mouse wheel
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    // Calculate zoom change
+    const delta = -e.deltaY * ZOOM_SENSITIVITY;
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (1 + delta)));
+    
+    // Zoom toward mouse position
+    const { width: w, height: h } = dimensions;
+    const centerX = w / 2;
+    const centerY = h / 2;
+    
+    // Calculate the point we're zooming toward in canvas space
+    const zoomPointX = mouseX - centerX;
+    const zoomPointY = mouseY - centerY;
+    
+    // Adjust pan to zoom toward mouse position
+    const zoomFactor = newZoom / zoom;
+    const newPanX = zoomPointX - (zoomPointX - panOffset.x) * zoomFactor;
+    const newPanY = zoomPointY - (zoomPointY - panOffset.y) * zoomFactor;
+    
+    setZoom(newZoom);
+    setPanOffset({ x: newPanX, y: newPanY });
+  }, [zoom, panOffset, dimensions]);
+
+  // Handle pan start - left click anywhere starts panning
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button === 0) { // Left click
+      e.preventDefault();
+      setIsPanning(true);
+      setHasMoved(false);
+      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    }
+  }, [panOffset]);
+
+  // Handle pan move
+  const handlePanMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanning) {
+      const newX = e.clientX - panStart.x;
+      const newY = e.clientY - panStart.y;
+      
+      // Check if we've moved significantly
+      if (Math.abs(newX - panOffset.x) > 3 || Math.abs(newY - panOffset.y) > 3) {
+        setHasMoved(true);
+      }
+      
+      setPanOffset({ x: newX, y: newY });
+    }
+  }, [isPanning, panStart, panOffset]);
+
+  // Handle pan end
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // Reset zoom and pan
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
+
+  // Zoom in/out buttons
+  const zoomIn = useCallback(() => {
+    setZoom(z => Math.min(MAX_ZOOM, z * 1.3));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom(z => Math.max(MIN_ZOOM, z / 1.3));
+  }, []);
+
   // Render heatmap
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -127,24 +230,44 @@ export function KnowledgeHeatmap({
     canvas.width = w;
     canvas.height = h;
 
-    // Create image data for pixel manipulation
-    const imageData = ctx.createImageData(w, h);
-    const data = imageData.data;
+    // Clear canvas with background color
+    ctx.fillStyle = '#fffffc';
+    ctx.fillRect(0, 0, w, h);
 
-    // Calculate bandwidth based on note count and canvas size
+    // Save context and apply zoom/pan transform
+    ctx.save();
+    
+    // Translate to center, apply zoom, translate back, then apply pan
+    ctx.translate(w / 2 + panOffset.x, h / 2 + panOffset.y);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-w / 2, -h / 2);
+
+    // Pre-compute note positions in pixel space with padding
+    const padding = 0.1; // 10% padding on each side for tighter clustering
+    const notePixelPositions = notes.map(note => ({
+      x: (padding + note.positionX * (1 - 2 * padding)) * w,
+      y: (padding + note.positionY * (1 - 2 * padding)) * h,
+      weight: 1 + note.connectionCount * 0.5,
+    }));
+
+    // Calculate bandwidth - smaller values create tighter clusters around each note
     const avgSpacing = Math.sqrt((w * h) / notes.length);
-    const bandwidth = Math.max(30, Math.min(80, avgSpacing * 0.8));
+    const bandwidth = Math.max(40, Math.min(70, avgSpacing * 0.7));
+
+    // Create offscreen canvas for heatmap at base resolution
+    const offscreen = document.createElement('canvas');
+    offscreen.width = w;
+    offscreen.height = h;
+    const offCtx = offscreen.getContext('2d');
+    if (!offCtx) return;
+
+    // Create image data for pixel manipulation
+    const imageData = offCtx.createImageData(w, h);
+    const data = imageData.data;
 
     // Calculate density for each pixel
     const densityMap = new Float32Array(w * h);
     let maxDensity = 0;
-
-    // Pre-compute note positions in pixel space
-    const notePixelPositions = notes.map(note => ({
-      x: note.positionX * w,
-      y: note.positionY * h,
-      weight: 1 + note.connectionCount * 0.5, // More connected = higher weight
-    }));
 
     // Sample every few pixels for performance, then interpolate
     const sampleRate = 2;
@@ -158,7 +281,7 @@ export function KnowledgeHeatmap({
           const dy = y - notePos.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
-          if (distance < bandwidth * 3) { // Only compute if within range
+          if (distance < bandwidth * 4) { // Wider range for softer edges
             density += gaussianKernel(distance, bandwidth) * notePos.weight;
           }
         }
@@ -174,86 +297,125 @@ export function KnowledgeHeatmap({
       }
     }
 
-    // Normalize and apply colors
-    for (let i = 0; i < w * h; i++) {
-      const normalizedDensity = maxDensity > 0 ? densityMap[i] / maxDensity : 0;
-      const color = interpolateColor(normalizedDensity);
-      
-      const pixelIndex = i * 4;
-      data[pixelIndex] = color[0];     // R
-      data[pixelIndex + 1] = color[1]; // G
-      data[pixelIndex + 2] = color[2]; // B
-      data[pixelIndex + 3] = 255;      // A
+    // Background color RGB values
+    const bgR = 255, bgG = 255, bgB = 252;
+
+    // Edge fade margin - fade to background near edges
+    const edgeFadeMargin = 40;
+
+    // Normalize and apply colors with smooth alpha blending to background
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const normalizedDensity = maxDensity > 0 ? densityMap[i] / maxDensity : 0;
+        
+        // Calculate edge fade factor (0 at edges, 1 in center)
+        const edgeDistX = Math.min(x, w - 1 - x);
+        const edgeDistY = Math.min(y, h - 1 - y);
+        const edgeDist = Math.min(edgeDistX, edgeDistY);
+        const edgeFade = Math.min(1, edgeDist / edgeFadeMargin);
+        
+        // Smooth easing function for more organic fade
+        const eased = Math.pow(normalizedDensity, 0.6);
+        const baseAlpha = Math.min(1, eased * 2.5);
+        const alpha = baseAlpha * edgeFade; // Apply edge fade
+        
+        const pixelIndex = i * 4;
+        if (alpha > 0.005) {
+          const color = interpolateColor(normalizedDensity);
+          
+          // Alpha blend with background
+          data[pixelIndex] = Math.round(color[0] * alpha + bgR * (1 - alpha));
+          data[pixelIndex + 1] = Math.round(color[1] * alpha + bgG * (1 - alpha));
+          data[pixelIndex + 2] = Math.round(color[2] * alpha + bgB * (1 - alpha));
+          data[pixelIndex + 3] = 255;
+        } else {
+          // Pure background
+          data[pixelIndex] = bgR;
+          data[pixelIndex + 1] = bgG;
+          data[pixelIndex + 2] = bgB;
+          data[pixelIndex + 3] = 255;
+        }
+      }
     }
 
-    // Draw the heatmap
-    ctx.putImageData(imageData, 0, 0);
-
-    // Draw grid lines (subtle)
-    ctx.strokeStyle = 'rgba(0, 100, 0, 0.2)';
-    ctx.lineWidth = 0.5;
+    // Draw the heatmap to offscreen canvas
+    offCtx.putImageData(imageData, 0, 0);
     
-    // Vertical center line
-    ctx.beginPath();
-    ctx.moveTo(w / 2, 0);
-    ctx.lineTo(w / 2, h);
-    ctx.stroke();
-    
-    // Horizontal center line
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
+    // Draw offscreen canvas to main canvas (with transform applied)
+    ctx.drawImage(offscreen, 0, 0);
 
-    // Draw note positions as small dots
-    for (const note of notes) {
-      const x = note.positionX * w;
-      const y = note.positionY * h;
-      
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // Draw connections between related notes
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.lineWidth = 1;
+    // Draw connections between related notes (draw first, so dots appear on top)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1.5 / zoom;
     
     for (const note of notes) {
-      const x1 = note.positionX * w;
-      const y1 = note.positionY * h;
+      const notePos = notePixelPositions.find((_, i) => notes[i]._id === note._id);
+      if (!notePos) continue;
+      const x1 = notePos.x;
+      const y1 = notePos.y;
       
       for (const relatedId of note.relatedNotes) {
-        const relatedNote = notes.find(n => n._id === relatedId);
-        if (!relatedNote) continue;
+        const relatedIdx = notes.findIndex(n => n._id === relatedId);
+        if (relatedIdx === -1) continue;
+        const relatedPos = notePixelPositions[relatedIdx];
         
-        const x2 = relatedNote.positionX * w;
-        const y2 = relatedNote.positionY * h;
+        const x2 = relatedPos.x;
+        const y2 = relatedPos.y;
+        
+        // Draw curved connection
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const offset = len * 0.15;
+        const ctrlX = midX - dy * offset / (len + 0.001);
+        const ctrlY = midY + dx * offset / (len + 0.001);
         
         ctx.beginPath();
         ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, x2, y2);
         ctx.stroke();
       }
     }
 
-  }, [notes, dimensions]);
+    // Draw note positions as small dots
+    const dotRadius = 4 / zoom;
+    for (let i = 0; i < notes.length; i++) {
+      const pos = notePixelPositions[i];
+      const x = pos.x;
+      const y = pos.y;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.lineWidth = 1 / zoom;
+      ctx.stroke();
+    }
 
-  // Find note at position
-  const findNoteAtPosition = useCallback((x: number, y: number): HeatmapNote | null => {
+    // Restore context
+    ctx.restore();
+
+  }, [notes, dimensions, zoom, panOffset]);
+
+  // Find note at position (accounting for zoom/pan and padding)
+  const findNoteAtPosition = useCallback((screenX: number, screenY: number): HeatmapNote | null => {
     const { width: w, height: h } = dimensions;
-    const hitRadius = 15; // pixels
+    const hitRadius = 15 / zoom; // Adjust hit radius for zoom
+    const padding = 0.1;
+    
+    // Convert screen coordinates to canvas coordinates
+    const { x, y } = screenToCanvas(screenX, screenY);
     
     let closestNote: HeatmapNote | null = null;
     let closestDistance = hitRadius;
     
     for (const note of notes) {
-      const noteX = note.positionX * w;
-      const noteY = note.positionY * h;
+      const noteX = (padding + note.positionX * (1 - 2 * padding)) * w;
+      const noteY = (padding + note.positionY * (1 - 2 * padding)) * h;
       const distance = Math.sqrt(Math.pow(x - noteX, 2) + Math.pow(y - noteY, 2));
       
       if (distance < closestDistance) {
@@ -263,7 +425,7 @@ export function KnowledgeHeatmap({
     }
     
     return closestNote;
-  }, [notes, dimensions]);
+  }, [notes, dimensions, zoom, screenToCanvas]);
 
   // Mouse handlers
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -276,11 +438,20 @@ export function KnowledgeHeatmap({
     
     setMousePos({ x: e.clientX, y: e.clientY });
     
+    // Handle panning if active
+    if (isPanning) {
+      handlePanMove(e);
+      return;
+    }
+    
     const note = findNoteAtPosition(x, y);
     setHoveredNote(note);
-  }, [findNoteAtPosition]);
+  }, [findNoteAtPosition, isPanning, handlePanMove]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Don't trigger click if we moved during the pan
+    if (hasMoved) return;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -292,32 +463,61 @@ export function KnowledgeHeatmap({
     if (note) {
       onNoteClick(note._id);
     }
-  }, [findNoteAtPosition, onNoteClick]);
+  }, [findNoteAtPosition, onNoteClick, hasMoved]);
 
   const handleMouseLeave = useCallback(() => {
     setHoveredNote(null);
+    setIsPanning(false);
   }, []);
 
   if (notes.length === 0) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-black/40 text-[14px]">
+      <div className="w-full h-full flex items-center justify-center text-black/40 text-[14px]" style={{ backgroundColor: '#fffffc' }}>
         No notes with positions. Computing...
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div ref={containerRef} className="relative w-full h-full" style={{ backgroundColor: '#fffffc' }}>
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className={`w-full h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseMove={handleMouseMove}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onClick={handleClick}
         onMouseLeave={handleMouseLeave}
+        onWheel={handleWheel}
       />
       
+      {/* Zoom controls */}
+      <div className="absolute top-3 left-3 flex flex-col gap-1">
+        <button
+          onClick={zoomIn}
+          className="w-7 h-7 bg-black/40 hover:bg-black/60 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          onClick={zoomOut}
+          className="w-7 h-7 bg-black/40 hover:bg-black/60 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
+          title="Zoom out"
+        >
+          −
+        </button>
+        <button
+          onClick={resetView}
+          className="w-7 h-7 bg-black/40 hover:bg-black/60 text-white rounded flex items-center justify-center text-[9px] font-medium transition-colors mt-1"
+          title="Reset view"
+        >
+          FIT
+        </button>
+      </div>
+      
       {/* Tooltip */}
-      {hoveredNote && (
+      {hoveredNote && !isPanning && (
         <div
           className="fixed z-50 bg-black/90 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-[200px]"
           style={{
@@ -340,21 +540,21 @@ export function KnowledgeHeatmap({
       )}
       
       {/* Stats overlay */}
-      <div className="absolute top-3 right-3 text-[11px] text-white/60 bg-black/30 px-2 py-1 rounded">
+      <div className="absolute top-3 right-3 text-[11px] text-black/40 bg-black/5 px-2 py-1 rounded">
         {notes.length} notes
       </div>
       
       {/* Legend */}
       <div className="absolute bottom-3 left-3 flex items-center gap-2">
-        <div className="flex items-center gap-1 text-[10px] text-white/60 bg-black/30 px-2 py-1 rounded">
+        <div className="flex items-center gap-1 text-[10px] text-black/40 bg-black/5 px-2 py-1 rounded">
           <div className="w-3 h-3 rounded-full" style={{ background: 'rgb(74, 124, 174)' }} />
           <span>sparse</span>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-white/60 bg-black/30 px-2 py-1 rounded">
+        <div className="flex items-center gap-1 text-[10px] text-black/40 bg-black/5 px-2 py-1 rounded">
           <div className="w-3 h-3 rounded-full" style={{ background: 'rgb(232, 232, 84)' }} />
           <span>dense</span>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-white/60 bg-black/30 px-2 py-1 rounded">
+        <div className="flex items-center gap-1 text-[10px] text-black/40 bg-black/5 px-2 py-1 rounded">
           <div className="w-3 h-3 rounded-full" style={{ background: 'rgb(232, 84, 84)' }} />
           <span>hot spot</span>
         </div>

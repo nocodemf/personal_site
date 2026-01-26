@@ -79,7 +79,7 @@ export default defineSchema({
 
   // Archive images
   archiveImages: defineTable({
-    title: v.string(),
+    title: v.optional(v.string()),
     description: v.optional(v.string()),
     storageId: v.id("_storage"),
     category: v.string(),

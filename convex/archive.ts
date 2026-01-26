@@ -41,7 +41,7 @@ export const generateUploadUrl = mutation({
 export const saveImage = mutation({
   args: {
     storageId: v.id("_storage"),
-    title: v.string(),
+    title: v.optional(v.string()),
     description: v.optional(v.string()),
     category: v.string(),
     width: v.optional(v.number()),
@@ -50,8 +50,8 @@ export const saveImage = mutation({
   handler: async (ctx, args) => {
     return await ctx.db.insert("archiveImages", {
       storageId: args.storageId,
-      title: args.title,
-      description: args.description,
+      title: args.title || undefined,
+      description: args.description || undefined,
       category: args.category,
       uploadedAt: Date.now(),
       width: args.width,
