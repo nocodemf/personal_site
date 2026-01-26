@@ -1697,63 +1697,53 @@ export default function Home() {
             transition: 'opacity 0.5s ease-in',
           }}
         >
-          {/* Carousel cards container with folder tabs */}
+          {/* Single card view with tabs */}
           <div className="absolute top-6 left-0 right-0 bottom-8">
-            {/* Folder tabs */}
-            <div className="flex gap-1 mb-0">
+            {/* Navigation tabs */}
+            <div className="flex gap-6 px-8 mb-4">
               <button
                 onClick={() => setSelectedFolder(0)}
-                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
-                  selectedFolder === 0 
-                    ? 'text-black bg-[rgba(30,30,30,0.4)]' 
-                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                className={`text-[16px] font-medium tracking-tight transition-colors ${
+                  selectedFolder === 0 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
               >
                 holding
               </button>
               <button
                 onClick={() => setSelectedFolder(1)}
-                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
-                  selectedFolder === 1 
-                    ? 'text-black bg-[rgba(255,255,252,0.5)]' 
-                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                className={`text-[16px] font-medium tracking-tight transition-colors ${
+                  selectedFolder === 1 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
               >
                 intelligence
               </button>
               <button
                 onClick={() => setSelectedFolder(2)}
-                className={`text-[14px] font-medium tracking-tight transition-all duration-300 px-5 py-2 rounded-t-lg ${
-                  selectedFolder === 2 
-                    ? 'text-black bg-[rgba(255,255,252,0.5)]' 
-                    : 'text-black/40 hover:text-black/60 bg-transparent'
+                className={`text-[16px] font-medium tracking-tight transition-colors ${
+                  selectedFolder === 2 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
               >
                 application
               </button>
             </div>
             
-            {/* Cards carousel container */}
-            <div className="relative w-full h-[calc(100%-40px)] overflow-hidden">
-              {/* Card 0 - Holding/Labs - dark glass */}
+            {/* Cards container - one visible at a time, slide in/out */}
+            <div className="relative w-full h-[calc(100%-50px)] overflow-hidden mx-8" style={{ width: 'calc(100% - 64px)' }}>
+              {/* Card 0 - Holding/Labs */}
               <div 
-                onClick={() => setSelectedFolder(0)}
-                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
                 style={{
-                  width: 'calc(100% - 60px)',
-                  height: '100%',
                   background: 'rgba(30, 30, 30, 0.4)',
                   backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 0 
-                    ? 'translateX(0) scale(1)' 
-                    : selectedFolder === 1 
-                      ? 'translateX(-85%) scale(0.9)' 
-                      : 'translateX(-90%) scale(0.85)',
-                  zIndex: selectedFolder === 0 ? 30 : selectedFolder === 1 ? 20 : 10,
-                  opacity: selectedFolder === 0 ? 1 : 0.7,
+                    ? 'translateX(0)' 
+                    : selectedFolder > 0 
+                      ? 'translateX(-110%)' 
+                      : 'translateX(110%)',
+                  opacity: selectedFolder === 0 ? 1 : 0,
                 }}
               >
-                {/* Background image with opacity */}
+                {/* Background image */}
                 <div 
                   className="absolute inset-0 opacity-60"
                   style={{ 
@@ -1765,35 +1755,30 @@ export default function Home() {
                 {/* Company name */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span 
-                    className="text-[120px] font-light text-white/80"
-                    style={{ letterSpacing: '-8px' }}
+                    className="text-[140px] font-light text-white/80"
+                    style={{ letterSpacing: '-10px' }}
                   >
                     xa Labs
                   </span>
                 </div>
               </div>
               
-              {/* Card 1 - Intelligence - light glass with inner card */}
+              {/* Card 1 - Intelligence */}
               <div 
-                onClick={() => setSelectedFolder(1)}
-                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
                 style={{
-                  width: 'calc(100% - 60px)',
-                  height: '100%',
                   background: 'rgba(255, 255, 252, 0.2)',
                   backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 1 
-                    ? 'translateX(0) scale(1)' 
-                    : selectedFolder === 0 
-                      ? 'translateX(90%) scale(0.9)' 
-                      : 'translateX(-85%) scale(0.9)',
-                  zIndex: selectedFolder === 1 ? 30 : selectedFolder === 0 ? 20 : 20,
-                  opacity: selectedFolder === 1 ? 1 : 0.7,
+                    ? 'translateX(0)' 
+                    : selectedFolder > 1 
+                      ? 'translateX(-110%)' 
+                      : 'translateX(110%)',
+                  opacity: selectedFolder === 1 ? 1 : 0,
                 }}
               >
-                {/* Inner card with padding */}
+                {/* Inner card */}
                 <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
-                  {/* Background image */}
                   <div 
                     className="absolute inset-0"
                     style={{ 
@@ -1802,13 +1787,11 @@ export default function Home() {
                       backgroundPosition: 'center',
                     }}
                   />
-                  {/* Dark overlay */}
                   <div className="absolute inset-0 bg-black/30" />
-                  {/* Company name */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span 
-                      className="text-[120px] font-light text-white/90"
-                      style={{ letterSpacing: '-8px' }}
+                      className="text-[140px] font-light text-white/90"
+                      style={{ letterSpacing: '-10px' }}
                     >
                       Evos
                     </span>
@@ -1816,27 +1799,22 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* Card 2 - Application - light glass with inner card */}
+              {/* Card 2 - Application */}
               <div 
-                onClick={() => setSelectedFolder(2)}
-                className="absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ease-out"
+                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
                 style={{
-                  width: 'calc(100% - 60px)',
-                  height: '100%',
                   background: 'rgba(255, 255, 252, 0.2)',
                   backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 2 
-                    ? 'translateX(0) scale(1)' 
-                    : selectedFolder === 1 
-                      ? 'translateX(90%) scale(0.9)' 
-                      : 'translateX(95%) scale(0.85)',
-                  zIndex: selectedFolder === 2 ? 30 : selectedFolder === 1 ? 20 : 10,
-                  opacity: selectedFolder === 2 ? 1 : 0.7,
+                    ? 'translateX(0)' 
+                    : selectedFolder > 2 
+                      ? 'translateX(-110%)' 
+                      : 'translateX(110%)',
+                  opacity: selectedFolder === 2 ? 1 : 0,
                 }}
               >
-                {/* Inner card with padding */}
+                {/* Inner card */}
                 <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
-                  {/* Background image */}
                   <div 
                     className="absolute inset-0"
                     style={{ 
@@ -1845,13 +1823,11 @@ export default function Home() {
                       backgroundPosition: 'center',
                     }}
                   />
-                  {/* Dark overlay */}
                   <div className="absolute inset-0 bg-black/30" />
-                  {/* Company name */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span 
-                      className="text-[120px] font-light text-white/90"
-                      style={{ letterSpacing: '-8px' }}
+                      className="text-[140px] font-light text-white/90"
+                      style={{ letterSpacing: '-10px' }}
                     >
                       Evos
                     </span>
