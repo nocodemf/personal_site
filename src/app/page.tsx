@@ -826,7 +826,8 @@ export default function Home() {
                     onChange={(e) => handleBodyChange(e.target.value)}
                     onBlur={() => setIsEditingBody(false)}
                     autoFocus
-                    className="w-full min-h-[300px] text-[14px] text-black/80 leading-[1.7] bg-transparent outline-none resize-none"
+                    className="w-full flex-1 text-[14px] text-black/80 leading-[1.7] bg-transparent outline-none resize-none"
+                    style={{ minHeight: 'calc(100vh - 280px)' }}
                   />
                 ) : (
                   <div
@@ -834,7 +835,8 @@ export default function Home() {
                       setIsEditingBody(true);
                       setEditingBody(selectedNoteData.body ?? '');
                     }}
-                    className="text-[14px] text-black/80 leading-[1.7] min-h-[200px] cursor-text"
+                    className="text-[14px] text-black/80 leading-[1.7] flex-1 cursor-text"
+                    style={{ minHeight: 'calc(100vh - 280px)' }}
                     dangerouslySetInnerHTML={{ 
                       __html: selectedNoteData.body 
                         ? renderMarkdownToHtml(selectedNoteData.body)
@@ -2015,7 +2017,8 @@ export default function Home() {
                 onBlur={() => setIsEditingBody(false)}
                 autoFocus
                 placeholder="Start writing..."
-                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] h-[calc(100vh-180px)] bg-transparent outline-none resize-none placeholder:text-black/30"
+                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] flex-1 bg-transparent outline-none resize-none placeholder:text-black/30"
+                style={{ minHeight: 'calc(100vh - 180px)' }}
               />
             ) : (
               <div
@@ -2023,7 +2026,8 @@ export default function Home() {
                   setIsEditingBody(true);
                   setEditingBody(selectedNoteData.body ?? '');
                 }}
-                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] min-h-[200px] cursor-text"
+                className="text-[14px] text-black/80 leading-[1.7] w-full max-w-[600px] flex-1 cursor-text"
+                style={{ minHeight: 'calc(100vh - 180px)' }}
                 dangerouslySetInnerHTML={{ 
                   __html: selectedNoteData.body 
                     ? renderMarkdownToHtml(selectedNoteData.body)
