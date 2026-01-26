@@ -1752,13 +1752,13 @@ export default function Home() {
                     backgroundPosition: 'center bottom',
                   }}
                 />
-                {/* Company name */}
+                {/* Company name - Xanh Mono */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span 
-                    className="text-[140px] font-light text-white/80"
-                    style={{ letterSpacing: '-10px' }}
+                    className="text-[140px] text-white/80"
+                    style={{ letterSpacing: '-10px', fontFamily: 'var(--font-xanh-mono)' }}
                   >
-                    xa Labs
+                    Exa Labs
                   </span>
                 </div>
               </div>
@@ -1788,12 +1788,13 @@ export default function Home() {
                     }}
                   />
                   <div className="absolute inset-0 bg-black/30" />
+                  {/* Company name - Inter */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span 
-                      className="text-[140px] font-light text-white/90"
-                      style={{ letterSpacing: '-10px' }}
+                      className="text-[100px] font-light text-white/90"
+                      style={{ letterSpacing: '-6px', fontFamily: 'var(--font-inter)' }}
                     >
-                      Evos
+                      Exa Intelligence
                     </span>
                   </div>
                 </div>
@@ -1824,10 +1825,11 @@ export default function Home() {
                     }}
                   />
                   <div className="absolute inset-0 bg-black/30" />
+                  {/* Company name - Source Serif Pro */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span 
-                      className="text-[140px] font-light text-white/90"
-                      style={{ letterSpacing: '-10px' }}
+                      className="text-[140px] text-white/90"
+                      style={{ letterSpacing: '-8px', fontFamily: 'var(--font-source-serif)' }}
                     >
                       Evos
                     </span>
