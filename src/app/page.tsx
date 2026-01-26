@@ -403,7 +403,7 @@ export default function Home() {
     }
   };
   
-  // Save daily note to index
+  // Save daily note to index with 'journey' tag
   const saveDailyToIndex = async () => {
     if (!todayNotes.trim() && todayTasks.length === 0) return;
     
@@ -424,10 +424,10 @@ export default function Home() {
     const noteCount = notesData?.length || 0;
     
     await createNoteMutation({
-      title: `Daily: ${dateStr}`,
+      title: dateStr,
       body,
       color: '#B8B8B8',
-      tags: ['daily'],
+      tags: ['journey'],
       order: noteCount + 1,
     });
     
