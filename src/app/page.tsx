@@ -599,6 +599,15 @@ export default function Home() {
       setStage('first');
     }
   };
+
+  // Handle logout - clears session but keeps data in Convex
+  const handleLogout = () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    setStage('password');
+    setShowAbout(false);
+    setActiveView('home');
+    setPassword('');
+  };
   
   
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -648,29 +657,37 @@ export default function Home() {
               
               {/* Navigation underneath character */}
               <div 
-                className="mt-12 flex gap-6"
+                className="mt-12 flex flex-col items-center gap-4"
                 style={{
                   opacity: showAbout ? 1 : 0,
                   transition: 'opacity 0.5s ease-in',
                 }}
               >
+                <div className="flex gap-6">
+                  <button 
+                    onClick={() => setActiveView('index')} 
+                    className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                  >
+                    index
+                  </button>
+                  <button 
+                    onClick={() => setActiveView('ventures')} 
+                    className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                  >
+                    ventures
+                  </button>
+                  <button 
+                    onClick={() => setActiveView('archive')} 
+                    className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                  >
+                    archive
+                  </button>
+                </div>
                 <button 
-                  onClick={() => setActiveView('index')} 
-                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
+                  onClick={handleLogout}
+                  className="text-[12px] text-black/20 hover:text-black/40 transition-colors mt-4"
                 >
-                  index
-                </button>
-                <button 
-                  onClick={() => setActiveView('ventures')} 
-                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
-                >
-                  ventures
-                </button>
-                <button 
-                  onClick={() => setActiveView('archive')} 
-                  className="text-[14px] font-medium text-black/40 hover:text-black transition-colors"
-                >
-                  archive
+                  logout
                 </button>
               </div>
             </div>
@@ -1300,31 +1317,39 @@ export default function Home() {
               transition: 'opacity 0.5s ease-in',
             }}
           >
-            <div className="flex justify-end gap-4">
+            <div className="flex justify-between items-center">
               <button 
-                onClick={() => setActiveView('home')} 
-                className={`text-[14px] font-medium transition-opacity ${activeView === 'home' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+                onClick={handleLogout}
+                className="text-[12px] text-black/30 hover:text-black/50 transition-opacity"
               >
-                home
+                logout
               </button>
-              <button 
-                onClick={() => setActiveView('index')} 
-                className={`text-[14px] font-medium transition-opacity ${activeView === 'index' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-              >
-                index
-              </button>
-              <button 
-                onClick={() => setActiveView('ventures')} 
-                className={`text-[14px] font-medium transition-opacity ${activeView === 'ventures' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-              >
-                ventures
-              </button>
-              <button 
-                onClick={() => setActiveView('archive')} 
-                className={`text-[14px] font-medium transition-opacity ${activeView === 'archive' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
-              >
-                archive
-              </button>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setActiveView('home')} 
+                  className={`text-[14px] font-medium transition-opacity ${activeView === 'home' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+                >
+                  home
+                </button>
+                <button 
+                  onClick={() => setActiveView('index')} 
+                  className={`text-[14px] font-medium transition-opacity ${activeView === 'index' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+                >
+                  index
+                </button>
+                <button 
+                  onClick={() => setActiveView('ventures')} 
+                  className={`text-[14px] font-medium transition-opacity ${activeView === 'ventures' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+                >
+                  ventures
+                </button>
+                <button 
+                  onClick={() => setActiveView('archive')} 
+                  className={`text-[14px] font-medium transition-opacity ${activeView === 'archive' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+                >
+                  archive
+                </button>
+              </div>
             </div>
           </div>
         </div>
