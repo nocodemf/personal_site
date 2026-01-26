@@ -163,7 +163,7 @@ export default function Home() {
   ];
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagsExpanded, setTagsExpanded] = useState(true);
-  const [indexFilter, setIndexFilter] = useState<'all' | 'today'>('all');
+  const [indexFilter, setIndexFilter] = useState<'all' | 'today' | 'graph'>('all');
   const [selectedNoteId, setSelectedNoteId] = useState<Id<"notes"> | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [indexSearch, setIndexSearch] = useState('');
@@ -790,7 +790,7 @@ export default function Home() {
                 >
                   ← back
                 </button>
-                <div className="flex gap-4">
+                <div className="flex gap-2">
                   <button
                     onClick={() => setIndexFilter('all')}
                     className={`text-[14px] ${indexFilter === 'all' ? 'text-black font-medium' : 'text-black/40'}`}
@@ -802,6 +802,12 @@ export default function Home() {
                     className={`text-[14px] ${indexFilter === 'today' ? 'text-black font-medium border border-black px-2' : 'text-black/40'}`}
                   >
                     Today
+                  </button>
+                  <button
+                    onClick={() => setIndexFilter('graph')}
+                    className={`text-[14px] ${indexFilter === 'graph' ? 'text-black font-medium' : 'text-black/40'}`}
+                  >
+                    Graph
                   </button>
                 </div>
               </div>
@@ -1494,7 +1500,7 @@ export default function Home() {
             )}
             
             {/* Filters */}
-            <div className="flex gap-6">
+            <div className="flex gap-3">
               <button
                 onClick={() => setIndexFilter('all')}
                 className={`text-[14px] font-medium transition-opacity ${indexFilter === 'all' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
@@ -1506,6 +1512,12 @@ export default function Home() {
                 className={`text-[14px] font-medium transition-opacity ${indexFilter === 'today' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
               >
                 Today
+              </button>
+              <button
+                onClick={() => setIndexFilter('graph')}
+                className={`text-[14px] font-medium transition-opacity ${indexFilter === 'graph' ? 'text-black' : 'text-black/40 hover:text-black/60'}`}
+              >
+                Graph
               </button>
             </div>
           </div>
@@ -1812,6 +1824,114 @@ export default function Home() {
                   {dailySaved ? '✓ saved' : 'save to index →'}
                 </button>
         </div>
+            </div>
+          )}
+          
+          {/* Graph view - Knowledge graph visualization */}
+          {indexFilter === 'graph' && (
+            <div className="flex-1 px-8 pt-6 pb-6 overflow-hidden">
+              <div className="w-full h-full relative bg-[#fafaf8] rounded-lg border border-black/10">
+                {/* Graph visualization using SVG */}
+                <svg className="w-full h-full" viewBox="0 0 800 600">
+                  {/* Draw edges (connections between notes) */}
+                  {indexItems.map((note, idx) => {
+                    const nodeX = 100 + (idx % 4) * 180;
+                    const nodeY = 100 + Math.floor(idx / 4) * 150;
+                    
+                    return note.relatedNotes?.map((relatedId) => {
+                      const relatedIdx = indexItems.findIndex(n => n._id === relatedId);
+                      if (relatedIdx === -1 || relatedIdx <= idx) return null;
+                      
+                      const targetX = 100 + (relatedIdx % 4) * 180;
+                      const targetY = 100 + Math.floor(relatedIdx / 4) * 150;
+                      
+                      return (
+                        <line
+                          key={`${note._id}-${relatedId}`}
+                          x1={nodeX}
+                          y1={nodeY}
+                          x2={targetX}
+                          y2={targetY}
+                          stroke="rgba(0,0,0,0.15)"
+                          strokeWidth="1"
+                        />
+                      );
+                    });
+                  })}
+                  
+                  {/* Draw nodes (notes) */}
+                  {indexItems.map((note, idx) => {
+                    const nodeX = 100 + (idx % 4) * 180;
+                    const nodeY = 100 + Math.floor(idx / 4) * 150;
+                    const hasConnections = (note.relatedNotes?.length || 0) > 0 || 
+                      indexItems.some(n => n.relatedNotes?.includes(note._id));
+                    
+                    return (
+                      <g 
+                        key={note._id}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelectedNoteId(note._id);
+                          setIndexFilter('all');
+                        }}
+                      >
+                        {/* Node circle */}
+                        <circle
+                          cx={nodeX}
+                          cy={nodeY}
+                          r={hasConnections ? 28 : 20}
+                          fill={note.color}
+                          opacity={0.8}
+                          className="hover:opacity-100 transition-opacity"
+                        />
+                        {/* Connection count badge */}
+                        {hasConnections && (
+                          <>
+                            <circle
+                              cx={nodeX + 20}
+                              cy={nodeY - 20}
+                              r={10}
+                              fill="black"
+                            />
+                            <text
+                              x={nodeX + 20}
+                              y={nodeY - 16}
+                              textAnchor="middle"
+                              fill="white"
+                              fontSize="10"
+                            >
+                              {(note.relatedNotes?.length || 0)}
+                            </text>
+                          </>
+                        )}
+                        {/* Note title */}
+                        <text
+                          x={nodeX}
+                          y={nodeY + 45}
+                          textAnchor="middle"
+                          fill="black"
+                          fontSize="11"
+                          opacity={0.7}
+                        >
+                          {note.title.length > 18 ? note.title.slice(0, 18) + '...' : note.title}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+                
+                {/* Legend */}
+                <div className="absolute bottom-4 left-4 text-[11px] text-black/40">
+                  <p>Click a node to view note</p>
+                  <p className="mt-1">Lines show semantic connections</p>
+                </div>
+                
+                {/* Stats */}
+                <div className="absolute top-4 right-4 text-[11px] text-black/40 text-right">
+                  <p>{indexItems.length} notes</p>
+                  <p>{indexItems.reduce((acc, n) => acc + (n.relatedNotes?.length || 0), 0)} connections</p>
+                </div>
+              </div>
             </div>
           )}
         </div>
