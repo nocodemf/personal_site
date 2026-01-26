@@ -117,29 +117,11 @@ export default function Home() {
       sessionStorage.setItem(SESSION_KEY, 'true');
     }
   }, [stage]);
-  const [selectedFolder, setSelectedFolder] = useState<number>(0);
+  const [selectedFolder, setSelectedFolder] = useState<number>(2); // Default to Evos (application) - front card
   
   // Venture KPI data
   const ventureKPIs = [
-    { // evos
-      name: 'evos',
-      metrics: [
-        { label: 'revenue', value: 85, display: '$2.4M' },
-        { label: 'raised', value: 60, display: '$5M' },
-        { label: 'operators', value: 45, display: '120+' },
-        { label: 'waitlist', value: 70, display: '2.4K' },
-      ]
-    },
-    { // studio
-      name: 'studio',
-      metrics: [
-        { label: 'revenue', value: 40, display: '$400K' },
-        { label: 'raised', value: 0, display: '—' },
-        { label: 'projects', value: 70, display: '45+' },
-        { label: 'team', value: 20, display: '4' },
-      ]
-    },
-    { // labs
+    { // holding - Labs
       name: 'labs',
       metrics: [
         { label: 'experiments', value: 90, display: '30+' },
@@ -148,13 +130,22 @@ export default function Home() {
         { label: 'team', value: 15, display: '3' },
       ]
     },
-    { // fund
-      name: 'fund',
+    { // intelligence - Studio
+      name: 'studio',
       metrics: [
-        { label: 'deployed', value: 55, display: '$2M' },
-        { label: 'raised', value: 80, display: '$10M' },
-        { label: 'portfolio', value: 40, display: '15' },
-        { label: 'exits', value: 20, display: '2' },
+        { label: 'revenue', value: 40, display: '$400K' },
+        { label: 'raised', value: 0, display: '—' },
+        { label: 'projects', value: 70, display: '45+' },
+        { label: 'team', value: 20, display: '4' },
+      ]
+    },
+    { // application - Evos
+      name: 'evos',
+      metrics: [
+        { label: 'revenue', value: 85, display: '$2.4M' },
+        { label: 'raised', value: 60, display: '$5M' },
+        { label: 'operators', value: 45, display: '120+' },
+        { label: 'waitlist', value: 70, display: '2.4K' },
       ]
     },
   ];
@@ -1686,7 +1677,7 @@ export default function Home() {
         </div>
       )}
       
-      {/* Right section - Ventures folders - Desktop only */}
+      {/* Right section - Ventures stacked cards - Desktop only */}
       {!isMobile && stage === 'second' && activeView === 'ventures' && (
         <div 
           className="absolute top-0 bottom-0 right-0 flex flex-col"
@@ -1696,87 +1687,136 @@ export default function Home() {
             transition: 'opacity 0.5s ease-in',
           }}
         >
-          {/* Folder tabs - each tab is a company */}
-          <div className="flex items-end px-10 pt-10">
+          {/* Tab labels */}
+          <div className="flex items-center gap-12 px-8 pt-6 pb-4">
             {[
-              { name: 'evos', link: 'https://evos.com' },
-              { name: 'studio', link: 'https://studio.com' },
-              { name: 'labs', link: 'https://labs.com' },
-              { name: 'fund', link: 'https://fund.com' },
-            ].map((company, idx) => (
+              { name: 'holding', idx: 0 },
+              { name: 'intelligence', idx: 1 },
+              { name: 'application', idx: 2 },
+            ].map((tab) => (
               <button
-                key={company.name}
-                onClick={() => setSelectedFolder(idx)}
-                className={`relative px-5 py-2.5 text-[11px] tracking-wide lowercase transition-all ${
-                  selectedFolder === idx 
-                    ? 'text-black z-10' 
+                key={tab.name}
+                onClick={() => setSelectedFolder(tab.idx)}
+                className={`text-[16px] font-medium tracking-tight transition-colors ${
+                  selectedFolder === tab.idx 
+                    ? 'text-black' 
                     : 'text-black/30 hover:text-black/50'
                 }`}
-                style={{
-                  background: selectedFolder === idx ? '#fffffc' : 'transparent',
-                  marginBottom: selectedFolder === idx ? '-2px' : '0',
-                  borderTop: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
-                  borderLeft: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
-                  borderRight: selectedFolder === idx ? '2px solid black' : '2px solid transparent',
-                }}
               >
-                {company.name}
+                {tab.name}
               </button>
             ))}
           </div>
           
-          {/* Folder body - contains image and link */}
-          <div 
-            className="flex-1 mx-10 mb-10 relative flex flex-col items-center justify-center"
-            style={{
-              background: '#fffffc',
-              border: '2px solid black',
-              borderTop: '2px solid black',
-            }}
-          >
-            {/* Subtle grid pattern */}
+          {/* Stacked cards container */}
+          <div className="flex-1 relative mx-8 mb-8">
+            {/* Card 1 - Holding (back) */}
             <div 
-              className="absolute inset-0 opacity-[0.015]"
+              onClick={() => setSelectedFolder(0)}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
+                selectedFolder === 0 ? 'z-30' : 'z-10'
+              }`}
               style={{
-                backgroundImage: `
-                  linear-gradient(black 1px, transparent 1px),
-                  linear-gradient(90deg, black 1px, transparent 1px)
-                `,
-                backgroundSize: '8px 8px',
+                top: selectedFolder === 0 ? '0' : '20px',
+                left: selectedFolder === 0 ? '0' : '0',
+                width: selectedFolder === 0 ? '90%' : '70%',
+                height: selectedFolder === 0 ? 'calc(100% - 20px)' : 'calc(100% - 60px)',
+                background: 'rgba(30, 30, 30, 0.4)',
               }}
-            />
-            
-            {/* Corner accents */}
-            <div className="absolute top-4 left-4 w-3 h-3 border-l-2 border-t-2 border-black/15" />
-            <div className="absolute top-4 right-4 w-3 h-3 border-r-2 border-t-2 border-black/15" />
-            <div className="absolute bottom-4 left-4 w-3 h-3 border-l-2 border-b-2 border-black/15" />
-            <div className="absolute bottom-4 right-4 w-3 h-3 border-r-2 border-b-2 border-black/15" />
-            
-            {/* Company image placeholder */}
-            <div 
-              className="w-48 h-48 border border-black/20 mb-6 flex items-center justify-center"
-              style={{ background: '#f8f8f6' }}
             >
-              <span className="text-[10px] text-black/20 uppercase tracking-widest">image</span>
+              {/* Background image */}
+              <div 
+                className="absolute inset-0 bg-cover bg-center opacity-60"
+                style={{ 
+                  backgroundImage: 'url(/placeholder-mountains.jpg)',
+                  backgroundColor: '#8a9aa4',
+                }}
+              />
+              {/* Overlay */}
+              <div className="absolute inset-0 bg-black/20" />
+              {/* Company name */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span 
+                  className="text-[120px] font-light text-white/80 tracking-tighter"
+                  style={{ letterSpacing: '-8px' }}
+                >
+                  Labs
+                </span>
+              </div>
             </div>
             
-            {/* Link */}
-            <a 
-              href={
-                selectedFolder === 0 ? 'https://evos.com' :
-                selectedFolder === 1 ? 'https://studio.com' :
-                selectedFolder === 2 ? 'https://labs.com' :
-                'https://fund.com'
-              }
-            target="_blank"
-            rel="noopener noreferrer"
-              className="text-[11px] text-black/40 hover:text-black transition-colors underline underline-offset-2"
+            {/* Card 2 - Intelligence (middle) */}
+            <div 
+              onClick={() => setSelectedFolder(1)}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
+                selectedFolder === 1 ? 'z-30' : selectedFolder === 0 ? 'z-20' : 'z-20'
+              }`}
+              style={{
+                top: selectedFolder === 1 ? '0' : '10px',
+                left: selectedFolder === 1 ? '0' : selectedFolder === 0 ? '15%' : '10%',
+                width: selectedFolder === 1 ? '90%' : '75%',
+                height: selectedFolder === 1 ? 'calc(100% - 20px)' : 'calc(100% - 40px)',
+                background: 'rgba(255, 255, 252, 0.2)',
+              }}
             >
-              {selectedFolder === 0 ? 'evos.com' :
-               selectedFolder === 1 ? 'studio.com' :
-               selectedFolder === 2 ? 'labs.com' :
-               'fund.com'} →
-            </a>
+              {/* Background image */}
+              <div 
+                className="absolute inset-0 bg-cover bg-center"
+                style={{ 
+                  backgroundImage: 'url(/placeholder-port.jpg)',
+                  backgroundColor: '#3a5a6a',
+                }}
+              />
+              {/* Overlay */}
+              <div className="absolute inset-0 bg-black/30" />
+              {/* Company name */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span 
+                  className="text-[120px] font-light text-white/90 tracking-tighter"
+                  style={{ letterSpacing: '-8px' }}
+                >
+                  Studio
+                </span>
+              </div>
+            </div>
+            
+            {/* Card 3 - Application (front) */}
+            <div 
+              onClick={() => setSelectedFolder(2)}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
+                selectedFolder === 2 ? 'z-30' : 'z-10'
+              }`}
+              style={{
+                top: selectedFolder === 2 ? '0' : '0',
+                left: selectedFolder === 2 ? '0' : selectedFolder === 0 ? '30%' : '20%',
+                width: selectedFolder === 2 ? '90%' : selectedFolder === 0 ? '65%' : '70%',
+                height: selectedFolder === 2 ? 'calc(100% - 20px)' : 'calc(100% - 30px)',
+                background: 'rgba(255, 255, 252, 0.2)',
+              }}
+            >
+              {/* Inner card with padding */}
+              <div className="absolute inset-4 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                {/* Background image */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ 
+                    backgroundImage: 'url(/placeholder-market.jpg)',
+                    backgroundColor: '#8a6a4a',
+                  }}
+                />
+                {/* Overlay */}
+                <div className="absolute inset-0 bg-black/30" />
+                {/* Company name */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span 
+                    className="text-[140px] font-light text-white/90 tracking-tighter"
+                    style={{ letterSpacing: '-10px' }}
+                  >
+                    Evos
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
