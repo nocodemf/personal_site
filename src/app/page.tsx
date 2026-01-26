@@ -119,6 +119,9 @@ export default function Home() {
   }, [stage]);
   const [selectedFolder, setSelectedFolder] = useState<number>(0);
   
+  // Map tab index to KPI array index: holding(0)->labs(2), intelligence(1)->studio(1), application(2)->evos(0)
+  const tabToKpiIndex = [2, 1, 0]; // holding->labs, intelligence->studio, application->evos
+  
   // Venture KPI data
   const ventureKPIs = [
     { // evos
@@ -898,7 +901,7 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="space-y-4">
-                  {ventureKPIs[selectedFolder]?.metrics.map((metric, idx) => (
+                  {ventureKPIs[tabToKpiIndex[selectedFolder]]?.metrics.map((metric, idx) => (
                     <div key={idx}>
                       <div className="flex justify-between text-[12px] mb-1">
                         <span className="text-black/50 uppercase">{metric.label}</span>
@@ -1169,11 +1172,11 @@ export default function Home() {
               }}
             >
               <p className="text-[12px] text-black/40 uppercase tracking-wider text-right mb-6">
-                {ventureKPIs[selectedFolder].name}
+                {ventureKPIs[tabToKpiIndex[selectedFolder]].name}
               </p>
               
               <div className="space-y-5">
-                {ventureKPIs[selectedFolder].metrics.map((metric, idx) => (
+                {ventureKPIs[tabToKpiIndex[selectedFolder]].metrics.map((metric, idx) => (
                   <div key={idx}>
                     <div className="flex items-baseline gap-2 mb-2 justify-end">
                       <span className="text-[11px] text-black/40 uppercase tracking-wide">
@@ -1687,136 +1690,147 @@ export default function Home() {
       {/* Right section - Ventures stacked cards - Desktop only */}
       {!isMobile && stage === 'second' && activeView === 'ventures' && (
         <div 
-          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          className="absolute top-0 bottom-0 right-0"
           style={{ 
             left: '32%',
             opacity: showAbout ? 1 : 0,
             transition: 'opacity 0.5s ease-in',
           }}
         >
-          {/* Tab labels */}
-          <div className="flex items-center gap-12 px-8 pt-6 pb-4">
-            {[
-              { name: 'holding', idx: 0 },
-              { name: 'intelligence', idx: 1 },
-              { name: 'application', idx: 2 },
-            ].map((tab) => (
-              <button
-                key={tab.name}
-                onClick={() => setSelectedFolder(tab.idx)}
-                className={`text-[16px] font-medium tracking-tight transition-colors ${
-                  selectedFolder === tab.idx 
-                    ? 'text-black' 
-                    : 'text-black/30 hover:text-black/50'
-                }`}
-              >
-                {tab.name}
-              </button>
-            ))}
+          {/* Tab labels - positioned above their respective cards */}
+          <div className="absolute top-6 left-8 flex items-center" style={{ gap: '110px' }}>
+            <button
+              onClick={() => setSelectedFolder(0)}
+              className={`text-[16px] font-medium tracking-tight transition-colors ${
+                selectedFolder === 0 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              }`}
+            >
+              holding
+            </button>
+            <button
+              onClick={() => setSelectedFolder(1)}
+              className={`text-[16px] font-medium tracking-tight transition-colors ${
+                selectedFolder === 1 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              }`}
+            >
+              intelligence
+            </button>
+            <button
+              onClick={() => setSelectedFolder(2)}
+              className={`text-[16px] font-medium tracking-tight transition-colors ${
+                selectedFolder === 2 ? 'text-black' : 'text-black/30 hover:text-black/50'
+              }`}
+            >
+              application
+            </button>
           </div>
           
-          {/* Stacked cards container */}
-          <div className="flex-1 relative mx-8 mb-8">
-            {/* Card 1 - Holding (back) */}
+          {/* Stacked cards container - cards positioned left to right */}
+          <div className="absolute top-16 left-0 right-0 bottom-8">
+            {/* Card 1 - Holding/Labs (back/leftmost) - dark glass */}
             <div 
               onClick={() => setSelectedFolder(0)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
-                selectedFolder === 0 ? 'z-30' : 'z-10'
-              }`}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
-                top: selectedFolder === 0 ? '0' : '20px',
-                left: selectedFolder === 0 ? '0' : '0',
-                width: selectedFolder === 0 ? '90%' : '70%',
-                height: selectedFolder === 0 ? 'calc(100% - 20px)' : 'calc(100% - 60px)',
+                left: '20px',
+                top: '20px',
+                width: 'calc(100% - 100px)',
+                height: 'calc(100% - 40px)',
                 background: 'rgba(30, 30, 30, 0.4)',
+                backdropFilter: 'blur(20px)',
+                zIndex: selectedFolder === 0 ? 30 : 10,
               }}
             >
-              {/* Background image */}
+              {/* Background image with opacity */}
               <div 
-                className="absolute inset-0 bg-cover bg-center opacity-60"
+                className="absolute inset-0 opacity-60"
                 style={{ 
-                  backgroundImage: 'url(/placeholder-mountains.jpg)',
-                  backgroundColor: '#8a9aa4',
+                  backgroundImage: 'url(/venture-mountains.png)',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center bottom',
                 }}
               />
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-black/20" />
               {/* Company name */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <span 
-                  className="text-[120px] font-light text-white/80 tracking-tighter"
-                  style={{ letterSpacing: '-8px' }}
+                  className="text-[140px] font-light text-white/80"
+                  style={{ letterSpacing: '-10px' }}
                 >
-                  Labs
+                  xa Labs
                 </span>
               </div>
             </div>
             
-            {/* Card 2 - Intelligence (middle) */}
+            {/* Card 2 - Intelligence/Studio (middle) - light glass with inner card */}
             <div 
               onClick={() => setSelectedFolder(1)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
-                selectedFolder === 1 ? 'z-30' : selectedFolder === 0 ? 'z-20' : 'z-20'
-              }`}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
-                top: selectedFolder === 1 ? '0' : '10px',
-                left: selectedFolder === 1 ? '0' : selectedFolder === 0 ? '15%' : '10%',
-                width: selectedFolder === 1 ? '90%' : '75%',
-                height: selectedFolder === 1 ? 'calc(100% - 20px)' : 'calc(100% - 40px)',
+                left: '140px',
+                top: '10px',
+                width: 'calc(100% - 180px)',
+                height: 'calc(100% - 20px)',
                 background: 'rgba(255, 255, 252, 0.2)',
-              }}
-            >
-              {/* Background image */}
-              <div 
-                className="absolute inset-0 bg-cover bg-center"
-                style={{ 
-                  backgroundImage: 'url(/placeholder-port.jpg)',
-                  backgroundColor: '#3a5a6a',
-                }}
-              />
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-black/30" />
-              {/* Company name */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span 
-                  className="text-[120px] font-light text-white/90 tracking-tighter"
-                  style={{ letterSpacing: '-8px' }}
-                >
-                  Studio
-                </span>
-              </div>
-            </div>
-            
-            {/* Card 3 - Application (front) */}
-            <div 
-              onClick={() => setSelectedFolder(2)}
-              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500 ${
-                selectedFolder === 2 ? 'z-30' : 'z-10'
-              }`}
-              style={{
-                top: selectedFolder === 2 ? '0' : '0',
-                left: selectedFolder === 2 ? '0' : selectedFolder === 0 ? '30%' : '20%',
-                width: selectedFolder === 2 ? '90%' : selectedFolder === 0 ? '65%' : '70%',
-                height: selectedFolder === 2 ? 'calc(100% - 20px)' : 'calc(100% - 30px)',
-                background: 'rgba(255, 255, 252, 0.2)',
+                backdropFilter: 'blur(20px)',
+                zIndex: selectedFolder === 1 ? 30 : 20,
               }}
             >
               {/* Inner card with padding */}
-              <div className="absolute inset-4 rounded-xl overflow-hidden bg-[#e8e8e3]">
+              <div className="absolute inset-[36px] rounded-xl overflow-hidden bg-[#e8e8e3]">
                 {/* Background image */}
                 <div 
-                  className="absolute inset-0 bg-cover bg-center"
+                  className="absolute inset-0"
                   style={{ 
-                    backgroundImage: 'url(/placeholder-market.jpg)',
-                    backgroundColor: '#8a6a4a',
+                    backgroundImage: 'url(/venture-port.png)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
                   }}
                 />
-                {/* Overlay */}
+                {/* Dark overlay */}
                 <div className="absolute inset-0 bg-black/30" />
                 {/* Company name */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span 
-                    className="text-[140px] font-light text-white/90 tracking-tighter"
+                    className="text-[140px] font-light text-white/90"
+                    style={{ letterSpacing: '-10px' }}
+                  >
+                    Evos
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Card 3 - Application/Evos (front/rightmost) - light glass with inner card */}
+            <div 
+              onClick={() => setSelectedFolder(2)}
+              className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
+              style={{
+                left: '280px',
+                top: '0',
+                width: 'calc(100% - 300px)',
+                height: 'calc(100%)',
+                background: 'rgba(255, 255, 252, 0.2)',
+                backdropFilter: 'blur(20px)',
+                zIndex: selectedFolder === 2 ? 30 : 25,
+              }}
+            >
+              {/* Inner card with padding */}
+              <div className="absolute inset-[36px] rounded-xl overflow-hidden bg-[#e8e8e3]">
+                {/* Background image */}
+                <div 
+                  className="absolute inset-0"
+                  style={{ 
+                    backgroundImage: 'url(/venture-market.png)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                />
+                {/* Dark overlay */}
+                <div className="absolute inset-0 bg-black/30" />
+                {/* Company name */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span 
+                    className="text-[140px] font-light text-white/90"
                     style={{ letterSpacing: '-10px' }}
                   >
                     Evos
