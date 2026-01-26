@@ -1767,9 +1767,9 @@ export default function Home() {
               className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
                 left: '140px',
-                top: '10px',
+                top: '20px',
                 width: 'calc(100% - 180px)',
-                height: 'calc(100% - 20px)',
+                height: 'calc(100% - 40px)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
                 zIndex: selectedFolder === 1 ? 30 : 15,
@@ -1806,9 +1806,9 @@ export default function Home() {
               className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
               style={{
                 left: '280px',
-                top: '0',
+                top: '20px',
                 width: 'calc(100% - 300px)',
-                height: 'calc(100%)',
+                height: 'calc(100% - 40px)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
                 zIndex: selectedFolder === 2 ? 30 : 10,
