@@ -1,28 +1,54 @@
-import { action, internalMutation, internalQuery } from "./_generated/server";
-import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Agent } from "@convex-dev/agent";
+import { components, internal } from "./_generated/api";
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText } from "ai";
+import { v } from "convex/values";
+import { action, internalMutation, internalQuery } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
-// Vercel AI Gateway client
+// Vercel AI Gateway client - using Gemini 2.5 Flash for:
+// - Fast processing (important for scheduled tasks)
+// - Good structured JSON output
+// - Cost effective for daily runs
+// - Strong enough for content analysis and categorization
 const gateway = createOpenAI({
   baseURL: "https://ai-gateway.vercel.sh/v1",
   apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY,
 });
 
-// Get all notes for context
+// Daily Note Processor Agent
+// Purpose: Analyze daily notes, extract important content, route to appropriate notes
+export const dailyProcessor = new Agent(components.agent, {
+  name: "dailyProcessor",
+  languageModel: gateway("google/gemini-2.5-flash"),
+  instructions: `You are a personal knowledge curator. Your job is to process daily notes and extract valuable content.
+
+ROLE: Identify important insights, ideas, learnings, and tasks. Discard noise.
+
+BEHAVIOR:
+- Be selective. Most daily content is throwaway.
+- Important = insights, decisions, learnings, actionable ideas, reflections
+- Scrap = casual notes, random thoughts, temporary reminders, noise
+- When matching to existing notes, only match if DIRECTLY related
+- New notes should have clear, specific titles
+- Tags should be lowercase, single words, descriptive
+
+OUTPUT: Always respond with valid JSON only. No markdown, no explanation.`,
+});
+
+// Get all notes for context (excluding daily notes)
 export const getAllNotesContext = internalQuery({
   args: {},
   handler: async (ctx) => {
     const notes = await ctx.db.query("notes").collect();
-    return notes.map(note => ({
-      id: note._id,
-      title: note.title,
-      body: note.body.substring(0, 500), // Preview only
-      tags: note.tags,
-      aiSummary: note.aiSummary,
-    }));
+    return notes
+      .filter(n => !n.tags.includes('daily')) // Exclude daily notes
+      .map(note => ({
+        id: note._id,
+        title: note.title,
+        body: note.body.substring(0, 400),
+        tags: note.tags,
+        aiSummary: note.aiSummary,
+      }));
   },
 });
 
@@ -31,16 +57,21 @@ export const appendToExistingNote = internalMutation({
   args: {
     noteId: v.id("notes"),
     content: v.string(),
+    source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const note = await ctx.db.get(args.noteId);
-    if (!note) return;
+    if (!note) return { success: false };
     
-    const newBody = note.body + "\n\n---\n\n" + args.content;
+    const timestamp = new Date().toLocaleDateString('en-GB');
+    const newBody = note.body + `\n\n---\n*Added from daily note (${timestamp}):*\n\n${args.content}`;
+    
     await ctx.db.patch(args.noteId, {
       body: newBody,
       updatedAt: Date.now(),
     });
+    
+    return { success: true, noteTitle: note.title };
   },
 });
 
@@ -54,7 +85,7 @@ export const createExtractedNote = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     
-    // Ensure tags exist
+    // Ensure tags exist in tags table
     for (const tagName of args.tags) {
       const existingTag = await ctx.db
         .query("tags")
@@ -71,10 +102,10 @@ export const createExtractedNote = internalMutation({
     
     const notes = await ctx.db.query("notes").collect();
     
-    await ctx.db.insert("notes", {
+    const newNoteId = await ctx.db.insert("notes", {
       title: args.title,
       body: args.body,
-      color: '#A8D5BA', // Light green for extracted notes
+      color: '#A8D5BA', // Light green for AI-extracted notes
       tags: args.tags,
       createdAt: now,
       updatedAt: now,
@@ -85,10 +116,12 @@ export const createExtractedNote = internalMutation({
       relatedNotes: [],
       links: [],
     });
+    
+    return { success: true, noteId: newNoteId, title: args.title };
   },
 });
 
-// Main action: Process daily notes at 11:30pm
+// Main action: Process daily notes using the agent
 export const processDailyNotes = action({
   args: {
     dailyContent: v.string(),
@@ -99,145 +132,169 @@ export const processDailyNotes = action({
   },
   handler: async (ctx, args): Promise<{
     processed: boolean;
-    extracted: number;
-    appended: number;
-    created: number;
-    discarded: number;
+    summary: string;
+    actions: Array<{
+      type: 'append' | 'create' | 'discard';
+      title?: string;
+      noteId?: string;
+    }>;
   }> => {
     const { dailyContent, dailyTasks } = args;
     
-    // Combine content
+    // Combine all content
     const tasksText = dailyTasks.length > 0
       ? `Tasks:\n${dailyTasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
       : '';
     const fullContent = tasksText + dailyContent;
     
     if (!fullContent.trim()) {
-      return { processed: false, extracted: 0, appended: 0, created: 0, discarded: 0 };
+      return { 
+        processed: false, 
+        summary: "No content to process",
+        actions: [] 
+      };
     }
     
-    // Get all existing notes for context
+    // Get existing notes for context
     const existingNotes = await ctx.runQuery(internal.dailyProcessor.getAllNotesContext, {});
     
-    // Build context about existing notes
-    const notesContext = existingNotes
-      .filter(n => !n.tags.includes('daily')) // Exclude other daily notes
-      .map(n => `ID: ${n.id}\nTitle: "${n.title}"\nTags: ${n.tags.join(', ')}\nSummary: ${n.aiSummary || n.body.substring(0, 200)}`)
-      .join('\n\n---\n\n');
+    // Build context string
+    const notesContext = existingNotes.length > 0
+      ? existingNotes.map(n => 
+          `[ID: ${n.id}] "${n.title}" - Tags: ${n.tags.join(', ')} - ${n.aiSummary || n.body.substring(0, 150)}`
+        ).join('\n')
+      : "No existing notes.";
     
-    // Use AI to analyze the daily content
-    const { text: responseText } = await generateText({
-      model: gateway("google/gemini-2.5-flash"),
-      prompt: `You are analyzing a daily note to extract important information.
-
-DAILY NOTE CONTENT:
+    // Create a thread for the agent
+    const { threadId } = await dailyProcessor.createThread(ctx, {});
+    
+    // First message: Provide context about existing notes
+    await dailyProcessor.generateText(ctx, { threadId }, {
+      prompt: `EXISTING NOTES IN MY KNOWLEDGE BASE:\n${notesContext}\n\nRemember these for matching.`,
+    });
+    
+    // Second message: Analyze the daily content
+    const analysisResult = await dailyProcessor.generateText(ctx, { threadId }, {
+      prompt: `DAILY NOTE TO PROCESS:
+---
 ${fullContent}
+---
 
-EXISTING NOTES IN DATABASE:
-${notesContext || "No existing notes yet."}
+Analyze this daily note. For each meaningful chunk:
+1. Is it IMPORTANT or SCRAP?
+2. If important: Does it belong in an existing note (use exact ID) or should it be a new note?
 
-TASK: Analyze the daily note and categorize each meaningful chunk of content.
-
-For each chunk, decide:
-1. Is it IMPORTANT (insight, idea, learning, task, decision, plan) or SCRAP (casual chat, random thoughts, noise)?
-2. If IMPORTANT: Does it relate strongly to an existing note? If yes, which one (by ID)? If no, it should be a new note.
-
-OUTPUT JSON ONLY:
+OUTPUT JSON:
 {
   "chunks": [
     {
-      "content": "the actual text chunk",
-      "type": "important" | "scrap",
+      "content": "exact text chunk",
+      "importance": "important" | "scrap",
+      "reason": "why important/scrap (5 words max)",
       "action": "append" | "create" | "discard",
-      "existingNoteId": "note_id_if_append" | null,
-      "suggestedTitle": "title_if_create" | null,
-      "suggestedTags": ["tag1", "tag2"] | []
+      "existingNoteId": "exact_id_if_append" | null,
+      "newNoteTitle": "title_if_create" | null,
+      "newNoteTags": ["tag1"] | []
     }
-  ]
+  ],
+  "overallSummary": "One sentence summary of what was valuable today"
 }
 
-RULES:
-- Be selective. Not everything is important.
-- Only append if the chunk DIRECTLY relates to an existing note's topic.
-- Create new notes for standalone insights, ideas, or learnings.
-- Discard casual/throwaway content.
-- Suggested tags should be lowercase, single words.
-- Keep chunks atomic - one idea per chunk.
-
-JSON ONLY. NO EXPLANATION.`,
-      temperature: 0.3,
+REMEMBER:
+- Be ruthless. Most content is scrap.
+- Only append if chunk DIRECTLY relates to existing note topic.
+- New note titles should be specific and descriptive.
+- Tags: lowercase, single word, relevant.`,
     });
     
-    // Parse the AI response
+    // Parse the agent's response
     let parsed: {
       chunks: Array<{
         content: string;
-        type: string;
+        importance: string;
+        reason: string;
         action: string;
         existingNoteId: string | null;
-        suggestedTitle: string | null;
-        suggestedTags: string[];
+        newNoteTitle: string | null;
+        newNoteTags: string[];
       }>;
+      overallSummary: string;
     };
     
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonMatch = analysisResult.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsed = JSON.parse(jsonMatch[0]);
       } else {
         throw new Error("No JSON found");
       }
     } catch (e) {
-      console.error("Failed to parse AI response:", e);
-      return { processed: false, extracted: 0, appended: 0, created: 0, discarded: 0 };
+      console.error("Failed to parse agent response:", e);
+      return { 
+        processed: false, 
+        summary: "Failed to analyze content",
+        actions: [] 
+      };
     }
     
-    let appended = 0;
-    let created = 0;
-    let discarded = 0;
+    const actions: Array<{
+      type: 'append' | 'create' | 'discard';
+      title?: string;
+      noteId?: string;
+    }> = [];
     
     // Process each chunk
     for (const chunk of parsed.chunks) {
-      if (chunk.action === 'discard' || chunk.type === 'scrap') {
-        discarded++;
+      if (chunk.action === 'discard' || chunk.importance === 'scrap') {
+        actions.push({ type: 'discard' });
         continue;
       }
       
       if (chunk.action === 'append' && chunk.existingNoteId) {
-        // Validate the note ID exists
+        // Validate note exists
         const noteExists = existingNotes.some(n => n.id === chunk.existingNoteId);
+        
         if (noteExists) {
-          await ctx.runMutation(internal.dailyProcessor.appendToExistingNote, {
+          const result = await ctx.runMutation(internal.dailyProcessor.appendToExistingNote, {
             noteId: chunk.existingNoteId as Id<"notes">,
             content: chunk.content,
           });
-          appended++;
-        } else {
-          // Fallback to creating a new note if ID is invalid
-          await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
-            title: chunk.suggestedTitle || "Extracted Note",
-            body: chunk.content,
-            tags: chunk.suggestedTags || [],
+          actions.push({ 
+            type: 'append', 
+            title: result.noteTitle,
+            noteId: chunk.existingNoteId 
           });
-          created++;
+        } else {
+          // Fallback: create new note if ID invalid
+          const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
+            title: chunk.newNoteTitle || "Extracted Insight",
+            body: chunk.content,
+            tags: chunk.newNoteTags || [],
+          });
+          actions.push({ 
+            type: 'create', 
+            title: result.title,
+            noteId: result.noteId 
+          });
         }
       } else if (chunk.action === 'create') {
-        await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
-          title: chunk.suggestedTitle || "Extracted Note",
+        const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
+          title: chunk.newNoteTitle || "Extracted Insight",
           body: chunk.content,
-          tags: chunk.suggestedTags || [],
+          tags: chunk.newNoteTags || [],
         });
-        created++;
+        actions.push({ 
+          type: 'create', 
+          title: result.title,
+          noteId: result.noteId 
+        });
       }
     }
     
     return {
       processed: true,
-      extracted: parsed.chunks.filter(c => c.type === 'important').length,
-      appended,
-      created,
-      discarded,
+      summary: parsed.overallSummary || "Daily notes processed",
+      actions,
     };
   },
 });
-
