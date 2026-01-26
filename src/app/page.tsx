@@ -1727,7 +1727,7 @@ export default function Home() {
           
           {/* Stacked cards container - cards positioned left to right */}
           <div className="absolute top-16 left-0 right-0 bottom-8">
-            {/* Card 1 - Holding/Labs (back/leftmost) - dark glass */}
+            {/* Card 1 - Holding/Labs (front/leftmost) - dark glass */}
             <div 
               onClick={() => setSelectedFolder(0)}
               className={`absolute rounded-xl overflow-hidden cursor-pointer transition-all duration-500`}
@@ -1738,7 +1738,7 @@ export default function Home() {
                 height: 'calc(100% - 40px)',
                 background: 'rgba(30, 30, 30, 0.4)',
                 backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 0 ? 30 : 10,
+                zIndex: selectedFolder === 0 ? 30 : 25,
               }}
             >
               {/* Background image with opacity */}
@@ -1772,7 +1772,7 @@ export default function Home() {
                 height: 'calc(100% - 20px)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 1 ? 30 : 20,
+                zIndex: selectedFolder === 1 ? 30 : 15,
               }}
             >
               {/* Inner card with padding */}
@@ -1811,7 +1811,7 @@ export default function Home() {
                 height: 'calc(100%)',
                 background: 'rgba(255, 255, 252, 0.2)',
                 backdropFilter: 'blur(20px)',
-                zIndex: selectedFolder === 2 ? 30 : 25,
+                zIndex: selectedFolder === 2 ? 30 : 10,
               }}
             >
               {/* Inner card with padding */}
