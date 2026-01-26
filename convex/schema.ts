@@ -20,14 +20,24 @@ export default defineSchema({
     bullets: v.optional(v.array(v.string())), // 3-5 key bullets extracted from content
     furtherQuestions: v.optional(v.array(v.string())), // Questions to deepen understanding
     aiSummary: v.optional(v.string()), // Summary of the note content
-    relatedNotes: v.optional(v.array(v.id("notes"))), // Links to related notes
+    relatedNotes: v.optional(v.array(v.id("notes"))), // Links to related notes (outgoing)
     links: v.optional(v.array(v.object({ // Extracted links from note
       url: v.string(),
       title: v.optional(v.string()),
     }))),
     // Track if AI analysis has been run
     lastAnalyzed: v.optional(v.number()),
-  }).index("by_order", ["order"]),
+    // Vector embeddings for semantic search
+    embedding: v.optional(v.array(v.float64())), // 1536 dimensions for text-embedding-3-small
+    embeddingUpdatedAt: v.optional(v.number()),
+    // Knowledge graph: notes that link TO this note
+    backlinks: v.optional(v.array(v.id("notes"))),
+  })
+    .index("by_order", ["order"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+    }),
 
   // Tags for filtering - aligned with left sidebar categories
   tags: defineTable({

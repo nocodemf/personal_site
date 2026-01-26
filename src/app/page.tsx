@@ -168,6 +168,18 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [indexSearch, setIndexSearch] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(true); // Default to semantic search
+  const [semanticResults, setSemanticResults] = useState<Array<{
+    _id: Id<"notes">;
+    title: string;
+    body: string;
+    tags: string[];
+    aiSummary?: string;
+    score: number;
+  }> | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const semanticSearchAction = useAction(api.embeddings.semanticSearch);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [todayNotes, setTodayNotes] = useState('');
   const [todayTasks, setTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
   const [dailySaved, setDailySaved] = useState(false);
@@ -239,6 +251,45 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
   
+  // Semantic search with debounce
+  useEffect(() => {
+    // Clear previous timer
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    // If search is empty or semantic search is disabled, clear results
+    if (!indexSearch.trim() || !isSemanticSearch) {
+      setSemanticResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    // Debounce the search
+    setIsSearching(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await semanticSearchAction({
+          query: indexSearch,
+          limit: 20,
+          tags: selectedTags.length > 0 ? selectedTags.map(t => t.replace('#', '')) : undefined,
+        });
+        setSemanticResults(results);
+      } catch (error) {
+        console.error('Semantic search failed:', error);
+        setSemanticResults(null);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [indexSearch, isSemanticSearch, selectedTags, semanticSearchAction]);
+  
   // Format today's date
   const formatTodayDate = () => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -267,6 +318,12 @@ export default function Home() {
   const notesData = useQuery(api.content.getNotes, { tags: selectedTags.length > 0 ? selectedTags : undefined });
   const tagCategories = useQuery(api.content.getTagsByCategory);
   const createNoteMutation = useMutation(api.content.createNote);
+  
+  // Fetch backlinks for selected note
+  const backlinksData = useQuery(
+    api.knowledgeGraph.getBacklinks, 
+    selectedNoteId ? { noteId: selectedNoteId } : "skip"
+  );
   
   // Initialize editing body when note is selected
   useEffect(() => {
@@ -1407,6 +1464,18 @@ export default function Home() {
                     className="w-full text-[24px] font-normal text-black bg-transparent outline-none placeholder:text-black border-b border-black pb-1"
                   />
                 </div>
+                {/* Semantic/Keyword toggle */}
+                <button
+                  onClick={() => setIsSemanticSearch(!isSemanticSearch)}
+                  className={`text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0 mb-1 ${
+                    isSemanticSearch 
+                      ? 'bg-black text-white border-black' 
+                      : 'bg-transparent text-black/60 border-black/20 hover:border-black/40'
+                  }`}
+                  title={isSemanticSearch ? 'Semantic search (by meaning)' : 'Keyword search (exact match)'}
+                >
+                  {isSemanticSearch ? 'AI' : 'KW'}
+                </button>
                 {/* Magnifying glass icon */}
                 <svg 
                   className="w-5 h-5 text-black flex-shrink-0 mb-1" 
@@ -1444,65 +1513,101 @@ export default function Home() {
           {/* All view - Index items list */}
           {indexFilter === 'all' && (
           <div className="flex-1 overflow-y-auto px-8 pt-6">
-            {indexItems
-              .filter(item => {
-                if (!indexSearch.trim()) return true;
-                const search = indexSearch.toLowerCase();
-                return (
-                  item.title.toLowerCase().includes(search) ||
-                  item.body.toLowerCase().includes(search) ||
-                  item.aiSummary.toLowerCase().includes(search) ||
-                  item.tags.some(tag => tag.toLowerCase().includes(search))
-                );
-              })
-              .map((item, idx) => (
-              <div key={item._id}>
-                {/* Item row */}
-                <div 
-                  onClick={() => setSelectedNoteId(item._id)}
-                  className="group flex items-center py-3 gap-4 cursor-pointer hover:bg-black/[0.02] transition-colors -mx-2 px-2 rounded"
-                >
-                  {/* Number */}
-                  <span className="text-[14px] text-black/50 w-6 flex-shrink-0">{item.id}</span>
-                  
-                  {/* Color indicator */}
-                  <div 
-                    className="w-3 h-3 flex-shrink-0"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  
-                  {/* Title and timestamp */}
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[14px] font-medium text-black">{item.title}</span>
-                    <span className="text-[14px] text-black/40"> — {item.timestamp}</span>
-                  </div>
-                  
-                  {/* Tags - clickable to filter */}
-                  <div className="flex gap-2 flex-shrink-0">
-                    {item.tags.map(tag => (
-                      <button 
-                        key={tag}
-                        onClick={(e) => handleTagClick(tag, e)}
-                        className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+            {/* Loading indicator for semantic search */}
+            {isSearching && (
+              <div className="text-[12px] text-black/40 mb-4">searching...</div>
+            )}
+            
+            {/* Use semantic results if available, otherwise fall back to filtered indexItems */}
+            {isSemanticSearch && semanticResults && indexSearch.trim() ? (
+              <>
+                {semanticResults.map((result) => {
+                  const item = indexItems.find(i => i._id === result._id);
+                  if (!item) return null;
+                  const relevancePercent = Math.round(result.score * 100);
+                  return (
+                    <div key={item._id}>
+                      <div 
+                        onClick={() => setSelectedNoteId(item._id)}
+                        className="group flex items-center py-3 gap-4 cursor-pointer hover:bg-black/[0.02] transition-colors -mx-2 px-2 rounded"
                       >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  {/* Delete button - appears on hover */}
-                  <button
-                    onClick={(e) => handleDeleteNote(item._id, e)}
-                    className="opacity-0 group-hover:opacity-100 text-[12px] text-black/30 hover:text-red-500 transition-all flex-shrink-0"
-                  >
-                    ✕
-                  </button>
-                </div>
-                
-                {/* Divider line */}
-                <div className="h-px bg-black/10" />
-              </div>
-            ))}
+                        <span className="text-[12px] text-black/40 w-8 flex-shrink-0 font-mono">{relevancePercent}%</span>
+                        <div className="w-3 h-3 flex-shrink-0" style={{ backgroundColor: item.color }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[14px] font-medium text-black">{item.title}</span>
+                          <span className="text-[14px] text-black/40"> — {item.timestamp}</span>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          {item.tags.map(tag => (
+                            <button 
+                              key={tag}
+                              onClick={(e) => handleTagClick(tag, e)}
+                              className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={(e) => handleDeleteNote(item._id, e)}
+                          className="opacity-0 group-hover:opacity-100 text-[12px] text-black/30 hover:text-red-500 transition-all flex-shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="h-px bg-black/10" />
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                {indexItems
+                  .filter(item => {
+                    if (!indexSearch.trim()) return true;
+                    const search = indexSearch.toLowerCase();
+                    return (
+                      item.title.toLowerCase().includes(search) ||
+                      item.body.toLowerCase().includes(search) ||
+                      item.aiSummary.toLowerCase().includes(search) ||
+                      item.tags.some(tag => tag.toLowerCase().includes(search))
+                    );
+                  })
+                  .map((item) => (
+                    <div key={item._id}>
+                      <div 
+                        onClick={() => setSelectedNoteId(item._id)}
+                        className="group flex items-center py-3 gap-4 cursor-pointer hover:bg-black/[0.02] transition-colors -mx-2 px-2 rounded"
+                      >
+                        <span className="text-[14px] text-black/50 w-6 flex-shrink-0">{item.id}</span>
+                        <div className="w-3 h-3 flex-shrink-0" style={{ backgroundColor: item.color }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[14px] font-medium text-black">{item.title}</span>
+                          <span className="text-[14px] text-black/40"> — {item.timestamp}</span>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          {item.tags.map(tag => (
+                            <button 
+                              key={tag}
+                              onClick={(e) => handleTagClick(tag, e)}
+                              className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={(e) => handleDeleteNote(item._id, e)}
+                          className="opacity-0 group-hover:opacity-100 text-[12px] text-black/30 hover:text-red-500 transition-all flex-shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="h-px bg-black/10" />
+                    </div>
+                  ))}
+              </>
+            )}
             
             {/* Bottom border */}
             <div className="h-px bg-black/10" />
@@ -2244,6 +2349,31 @@ export default function Home() {
                 </div>
               ) : (
                 <p className="text-[11px] text-black/30">none found</p>
+              )}
+            </div>
+            
+            {/* Backlinks - notes that link TO this note */}
+            <div className="min-w-[200px]">
+              <p className="text-[12px] font-medium text-black mb-2">
+                backlinks
+                {backlinksData && backlinksData.length > 0 && (
+                  <span className="ml-1 text-[10px] text-black/40">({backlinksData.length})</span>
+                )}
+              </p>
+              {backlinksData && backlinksData.length > 0 ? (
+                <div className="space-y-1">
+                  {backlinksData.map((backlink) => (
+                    <button
+                      key={backlink._id}
+                      onClick={() => setSelectedNoteId(backlink._id)}
+                      className="text-[11px] text-black/70 hover:text-black transition-colors block text-left"
+                    >
+                      ← {backlink.title}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-black/30">no notes link here</p>
               )}
             </div>
             
