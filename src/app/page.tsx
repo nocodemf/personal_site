@@ -1833,7 +1833,16 @@ export default function Home() {
               <div className="w-full h-full relative bg-[#fafaf8] rounded-lg border border-black/10">
                 {/* Graph visualization using SVG */}
                 <svg className="w-full h-full" viewBox="0 0 800 600">
-                  {/* Draw edges (connections between notes) */}
+                  <defs>
+                    {/* Gradient for edges */}
+                    <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="rgba(0,0,0,0.2)" />
+                      <stop offset="50%" stopColor="rgba(0,0,0,0.1)" />
+                      <stop offset="100%" stopColor="rgba(0,0,0,0.2)" />
+                    </linearGradient>
+                  </defs>
+                  
+                  {/* Draw edges (curved connections between notes) */}
                   {indexItems.map((note, idx) => {
                     const nodeX = 100 + (idx % 4) * 180;
                     const nodeY = 100 + Math.floor(idx / 4) * 150;
@@ -1845,15 +1854,24 @@ export default function Home() {
                       const targetX = 100 + (relatedIdx % 4) * 180;
                       const targetY = 100 + Math.floor(relatedIdx / 4) * 150;
                       
+                      // Calculate control points for bezier curve
+                      const midX = (nodeX + targetX) / 2;
+                      const midY = (nodeY + targetY) / 2;
+                      const dx = targetX - nodeX;
+                      const dy = targetY - nodeY;
+                      // Perpendicular offset for curve
+                      const offset = Math.min(Math.abs(dx), Math.abs(dy)) * 0.3;
+                      const ctrlX = midX + (dy > 0 ? -offset : offset);
+                      const ctrlY = midY + (dx > 0 ? offset : -offset);
+                      
                       return (
-                        <line
+                        <path
                           key={`${note._id}-${relatedId}`}
-                          x1={nodeX}
-                          y1={nodeY}
-                          x2={targetX}
-                          y2={targetY}
-                          stroke="rgba(0,0,0,0.15)"
-                          strokeWidth="1"
+                          d={`M ${nodeX} ${nodeY} Q ${ctrlX} ${ctrlY} ${targetX} ${targetY}`}
+                          fill="none"
+                          stroke="url(#edgeGradient)"
+                          strokeWidth="1.5"
+                          className="transition-all duration-300"
                         />
                       );
                     });

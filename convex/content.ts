@@ -57,20 +57,62 @@ export const getTags = query({
 export const getTagsByCategory = query({
   args: {},
   handler: async (ctx) => {
-    const tags = await ctx.db
-      .query("tags")
-      .withIndex("by_category")
-      .collect();
+    // Get tags actually in use by notes
+    const notes = await ctx.db.query("notes").collect();
+    const usedTags = new Set<string>();
     
-    // Group by category
-    const grouped: Record<string, string[]> = {};
-    for (const tag of tags) {
-      if (!grouped[tag.category]) {
-        grouped[tag.category] = [];
+    for (const note of notes) {
+      for (const tag of note.tags) {
+        usedTags.add(tag.toLowerCase().replace('#', ''));
       }
-      grouped[tag.category].push(`#${tag.name}`);
     }
+    
+    // Group by first letter category
+    const grouped: Record<string, string[]> = {};
+    for (const tag of usedTags) {
+      const firstLetter = tag.charAt(0).toUpperCase();
+      const category = /[A-Z]/.test(firstLetter) ? firstLetter : 'OTHER';
+      if (!grouped[category]) {
+        grouped[category] = [];
+      }
+      grouped[category].push(`#${tag}`);
+    }
+    
+    // Sort each category
+    for (const category of Object.keys(grouped)) {
+      grouped[category].sort();
+    }
+    
     return grouped;
+  },
+});
+
+// Clean up tags not used by any note
+export const cleanupUnusedTags = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Get all tags currently used by notes
+    const notes = await ctx.db.query("notes").collect();
+    const usedTags = new Set<string>();
+    
+    for (const note of notes) {
+      for (const tag of note.tags) {
+        usedTags.add(tag.toLowerCase().replace('#', ''));
+      }
+    }
+    
+    // Get all tags in the tags table
+    const allTags = await ctx.db.query("tags").collect();
+    
+    let deleted = 0;
+    for (const tag of allTags) {
+      if (!usedTags.has(tag.name.toLowerCase())) {
+        await ctx.db.delete(tag._id);
+        deleted++;
+      }
+    }
+    
+    return { deleted, remaining: usedTags.size };
   },
 });
 
