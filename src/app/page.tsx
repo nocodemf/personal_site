@@ -863,9 +863,9 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* Notes list or Today view */}
-              <div className="flex-1 overflow-y-auto px-4 pb-4">
-                {indexFilter === 'all' ? (
+              {/* Notes list, Today view, or Graph view */}
+              {indexFilter === 'all' && (
+                <div className="flex-1 overflow-y-auto px-4 pb-4">
                   <div className="space-y-3 pt-2">
                     {indexItems.map((note, index) => (
                       <div 
@@ -891,8 +891,12 @@ export default function Home() {
                       + New note
                     </button>
                   </div>
-                ) : (
-                  /* Today view for mobile */
+                </div>
+              )}
+              
+              {indexFilter === 'today' && (
+                <div className="flex-1 overflow-y-auto px-4 pb-4">
+                  {/* Today view for mobile */}
                   <div className="pt-4">
                     <p className="text-[18px] font-medium text-black mb-6">
                       {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
@@ -935,8 +939,26 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+              
+              {indexFilter === 'graph' && (
+                <div className="flex-1 overflow-hidden">
+                  {heatmapData && heatmapData.length > 0 ? (
+                    <KnowledgeHeatmap
+                      notes={heatmapData}
+                      onNoteClick={(noteId) => {
+                        setSelectedNoteId(noteId);
+                        setIndexFilter('all');
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-black/40 text-[14px]">
+                      {heatmapData === undefined ? 'Loading...' : 'Computing note positions...'}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
