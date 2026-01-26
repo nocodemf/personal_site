@@ -13,6 +13,7 @@ import type * as archive from "../archive.js";
 import type * as content from "../content.js";
 import type * as dailyProcessor from "../dailyProcessor.js";
 import type * as embeddings from "../embeddings.js";
+import type * as heatmap from "../heatmap.js";
 import type * as http from "../http.js";
 import type * as knowledgeGraph from "../knowledgeGraph.js";
 import type * as seed from "../seed.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   content: typeof content;
   dailyProcessor: typeof dailyProcessor;
   embeddings: typeof embeddings;
+  heatmap: typeof heatmap;
   http: typeof http;
   knowledgeGraph: typeof knowledgeGraph;
   seed: typeof seed;

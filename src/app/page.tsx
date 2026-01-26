@@ -5,6 +5,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { PixelCharacter, AnimationPhase } from "@/components/PixelCharacter";
+import { KnowledgeHeatmap } from "@/components/KnowledgeHeatmap";
 
 type Stage = 'password' | 'first' | 'transitioning' | 'second';
 
@@ -324,6 +325,9 @@ export default function Home() {
     api.knowledgeGraph.getBacklinks, 
     selectedNoteId ? { noteId: selectedNoteId } : "skip"
   );
+  
+  // Fetch heatmap data for graph view
+  const heatmapData = useQuery(api.heatmap.getHeatmapData, {});
   
   // Initialize editing body when note is selected
   useEffect(() => {
@@ -1827,129 +1831,22 @@ export default function Home() {
             </div>
           )}
           
-          {/* Graph view - Knowledge graph visualization */}
+          {/* Graph view - Knowledge graph heat map */}
           {indexFilter === 'graph' && (
-            <div className="flex-1 px-8 pt-6 pb-6 overflow-hidden">
-              <div className="w-full h-full relative bg-[#fafaf8] rounded-lg border border-black/10">
-                {/* Graph visualization using SVG */}
-                <svg className="w-full h-full" viewBox="0 0 800 600">
-                  <defs>
-                    {/* Gradient for edges */}
-                    <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="rgba(0,0,0,0.2)" />
-                      <stop offset="50%" stopColor="rgba(0,0,0,0.1)" />
-                      <stop offset="100%" stopColor="rgba(0,0,0,0.2)" />
-                    </linearGradient>
-                  </defs>
-                  
-                  {/* Draw edges (curved connections between notes) */}
-                  {indexItems.map((note, idx) => {
-                    const nodeX = 100 + (idx % 4) * 180;
-                    const nodeY = 100 + Math.floor(idx / 4) * 150;
-                    
-                    return note.relatedNotes?.map((relatedId) => {
-                      const relatedIdx = indexItems.findIndex(n => n._id === relatedId);
-                      if (relatedIdx === -1 || relatedIdx <= idx) return null;
-                      
-                      const targetX = 100 + (relatedIdx % 4) * 180;
-                      const targetY = 100 + Math.floor(relatedIdx / 4) * 150;
-                      
-                      // Calculate control points for bezier curve
-                      const midX = (nodeX + targetX) / 2;
-                      const midY = (nodeY + targetY) / 2;
-                      const dx = targetX - nodeX;
-                      const dy = targetY - nodeY;
-                      // Perpendicular offset for curve
-                      const offset = Math.min(Math.abs(dx), Math.abs(dy)) * 0.3;
-                      const ctrlX = midX + (dy > 0 ? -offset : offset);
-                      const ctrlY = midY + (dx > 0 ? offset : -offset);
-                      
-                      return (
-                        <path
-                          key={`${note._id}-${relatedId}`}
-                          d={`M ${nodeX} ${nodeY} Q ${ctrlX} ${ctrlY} ${targetX} ${targetY}`}
-                          fill="none"
-                          stroke="url(#edgeGradient)"
-                          strokeWidth="1.5"
-                          className="transition-all duration-300"
-                        />
-                      );
-                    });
-                  })}
-                  
-                  {/* Draw nodes (notes) */}
-                  {indexItems.map((note, idx) => {
-                    const nodeX = 100 + (idx % 4) * 180;
-                    const nodeY = 100 + Math.floor(idx / 4) * 150;
-                    const hasConnections = (note.relatedNotes?.length || 0) > 0 || 
-                      indexItems.some(n => n.relatedNotes?.includes(note._id));
-                    
-                    return (
-                      <g 
-                        key={note._id}
-                        className="cursor-pointer"
-                        onClick={() => {
-                          setSelectedNoteId(note._id);
-                          setIndexFilter('all');
-                        }}
-                      >
-                        {/* Node circle */}
-                        <circle
-                          cx={nodeX}
-                          cy={nodeY}
-                          r={hasConnections ? 28 : 20}
-                          fill={note.color}
-                          opacity={0.8}
-                          className="hover:opacity-100 transition-opacity"
-                        />
-                        {/* Connection count badge */}
-                        {hasConnections && (
-                          <>
-                            <circle
-                              cx={nodeX + 20}
-                              cy={nodeY - 20}
-                              r={10}
-                              fill="black"
-                            />
-                            <text
-                              x={nodeX + 20}
-                              y={nodeY - 16}
-                              textAnchor="middle"
-                              fill="white"
-                              fontSize="10"
-                            >
-                              {(note.relatedNotes?.length || 0)}
-                            </text>
-                          </>
-                        )}
-                        {/* Note title */}
-                        <text
-                          x={nodeX}
-                          y={nodeY + 45}
-                          textAnchor="middle"
-                          fill="black"
-                          fontSize="11"
-                          opacity={0.7}
-                        >
-                          {note.title.length > 18 ? note.title.slice(0, 18) + '...' : note.title}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-                
-                {/* Legend */}
-                <div className="absolute bottom-4 left-4 text-[11px] text-black/40">
-                  <p>Click a node to view note</p>
-                  <p className="mt-1">Lines show semantic connections</p>
+            <div className="flex-1 overflow-hidden">
+              {heatmapData && heatmapData.length > 0 ? (
+                <KnowledgeHeatmap
+                  notes={heatmapData}
+                  onNoteClick={(noteId) => {
+                    setSelectedNoteId(noteId);
+                    setIndexFilter('all');
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-black/40 text-[14px]">
+                  {heatmapData === undefined ? 'Loading...' : 'Computing note positions...'}
                 </div>
-                
-                {/* Stats */}
-                <div className="absolute top-4 right-4 text-[11px] text-black/40 text-right">
-                  <p>{indexItems.length} notes</p>
-                  <p>{indexItems.reduce((acc, n) => acc + (n.relatedNotes?.length || 0), 0)} connections</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>

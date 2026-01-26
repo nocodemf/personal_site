@@ -32,6 +32,10 @@ export default defineSchema({
     embeddingUpdatedAt: v.optional(v.number()),
     // Knowledge graph: notes that link TO this note
     backlinks: v.optional(v.array(v.id("notes"))),
+    // 2D position for heat map visualization (from UMAP)
+    positionX: v.optional(v.float64()),
+    positionY: v.optional(v.float64()),
+    positionUpdatedAt: v.optional(v.number()),
   })
     .index("by_order", ["order"])
     .vectorIndex("by_embedding", {
