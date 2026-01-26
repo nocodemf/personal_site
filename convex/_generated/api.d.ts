@@ -11,6 +11,7 @@
 import type * as agent from "../agent.js";
 import type * as archive from "../archive.js";
 import type * as content from "../content.js";
+import type * as dailyProcessor from "../dailyProcessor.js";
 import type * as http from "../http.js";
 import type * as seed from "../seed.js";
 import type * as updateNotes from "../updateNotes.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   archive: typeof archive;
   content: typeof content;
+  dailyProcessor: typeof dailyProcessor;
   http: typeof http;
   seed: typeof seed;
   updateNotes: typeof updateNotes;

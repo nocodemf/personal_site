@@ -280,6 +280,7 @@ export default function Home() {
   const updateNoteMutation = useMutation(api.updateNotes.updateNote);
   const deleteNoteMutation = useMutation(api.updateNotes.deleteNote);
   const analyzeNoteAction = useAction(api.agent.analyzeNote);
+  const processDailyNotesAction = useAction(api.dailyProcessor.processDailyNotes);
   
   // Archive
   const archiveImagesData = useQuery(api.archive.getImages, archiveFilter ? { category: archiveFilter } : {});
@@ -427,7 +428,7 @@ export default function Home() {
       title: dateStr,
       body,
       color: '#B8B8B8',
-      tags: ['journey'],
+      tags: ['daily'],
       order: noteCount + 1,
     });
     
@@ -440,14 +441,38 @@ export default function Home() {
     setTimeout(() => setDailySaved(false), 3000);
   };
   
-  // Auto-save daily note at 11pm
+  // Auto-save daily note at 11pm, then AI processes at 11:30pm
   useEffect(() => {
-    const checkAutoSave = () => {
+    const checkAutoSave = async () => {
       const now = new Date();
+      
+      // At 11:00pm - save the daily note first
       if (now.getHours() === 23 && now.getMinutes() === 0) {
-        // Only save if there's content and not already saved today
         if ((todayNotes.trim() || todayTasks.length > 0) && !dailySaved) {
           saveDailyToIndex();
+        }
+      }
+      
+      // At 11:30pm - AI processes the daily note to extract important content
+      if (now.getHours() === 23 && now.getMinutes() === 30) {
+        if ((todayNotes.trim() || todayTasks.length > 0) && !dailySaved) {
+          try {
+            const result = await processDailyNotesAction({
+              dailyContent: todayNotes,
+              dailyTasks: todayTasks,
+            });
+            console.log('Daily notes processed:', result);
+            
+            // Clear after AI processing
+            if (result.processed) {
+              setTodayNotes('');
+              setTodayTasks([]);
+              localStorage.removeItem(TODAY_NOTES_KEY);
+              localStorage.removeItem(TODAY_TASKS_KEY);
+            }
+          } catch (error) {
+            console.error('Failed to process daily notes:', error);
+          }
         }
       }
     };
@@ -455,7 +480,7 @@ export default function Home() {
     // Check every minute
     const interval = setInterval(checkAutoSave, 60000);
     return () => clearInterval(interval);
-  }, [todayNotes, todayTasks, dailySaved]);
+  }, [todayNotes, todayTasks, dailySaved, processDailyNotesAction]);
   
   // Handle image upload
   const handleImageUpload = async () => {
