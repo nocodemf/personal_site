@@ -16,19 +16,19 @@ const gateway = createOpenAI({
 });
 
 // Daily Note Processor Agent
-// Purpose: Analyze daily notes, extract important content, route to appropriate notes
+// Purpose: Analyze daily notes, extract important content, copy to appropriate notes
+// Note: Original daily note stays intact - we're just copying valuable content out
 export const dailyProcessor = new Agent(components.agent, {
   name: "dailyProcessor",
   languageModel: gateway("google/gemini-2.5-flash"),
-  instructions: `You are a personal knowledge curator. Your job is to process daily notes and extract valuable content.
+  instructions: `You are a personal knowledge curator. Your job is to find valuable content in daily notes and copy it to the right place.
 
-ROLE: Identify important insights, ideas, learnings, and tasks. Discard noise.
+ROLE: Identify insights, ideas, learnings worth preserving. Copy them out.
 
 BEHAVIOR:
-- Be selective. Most daily content is throwaway.
-- Important = insights, decisions, learnings, actionable ideas, reflections
-- Scrap = casual notes, random thoughts, temporary reminders, noise
-- When matching to existing notes, only match if DIRECTLY related
+- Find content worth keeping long-term (insights, decisions, learnings, ideas, reflections)
+- Skip casual/temporary content - it stays in the daily note, that's fine
+- When matching to existing notes, only match if DIRECTLY related to that note's topic
 - New notes should have clear, specific titles
 - Tags should be lowercase, single words, descriptive
 
@@ -134,7 +134,7 @@ export const processDailyNotes = action({
     processed: boolean;
     summary: string;
     actions: Array<{
-      type: 'append' | 'create' | 'discard';
+      type: 'append' | 'create';
       title?: string;
       noteId?: string;
     }>;
@@ -180,45 +180,44 @@ export const processDailyNotes = action({
 ${fullContent}
 ---
 
-Analyze this daily note. For each meaningful chunk:
-1. Is it IMPORTANT or SCRAP?
-2. If important: Does it belong in an existing note (use exact ID) or should it be a new note?
+Find valuable content worth preserving long-term. For each valuable chunk, decide:
+- Should it be APPENDED to an existing note? (use exact ID)
+- Should it become a NEW note?
+
+Skip casual/temporary content - it's fine staying in the daily note.
 
 OUTPUT JSON:
 {
-  "chunks": [
+  "valuableChunks": [
     {
-      "content": "exact text chunk",
-      "importance": "important" | "scrap",
-      "reason": "why important/scrap (5 words max)",
-      "action": "append" | "create" | "discard",
+      "content": "exact text to copy",
+      "action": "append" | "create",
       "existingNoteId": "exact_id_if_append" | null,
       "newNoteTitle": "title_if_create" | null,
       "newNoteTags": ["tag1"] | []
     }
   ],
-  "overallSummary": "One sentence summary of what was valuable today"
+  "summary": "One sentence: what valuable content was extracted today"
 }
 
-REMEMBER:
-- Be ruthless. Most content is scrap.
-- Only append if chunk DIRECTLY relates to existing note topic.
-- New note titles should be specific and descriptive.
-- Tags: lowercase, single word, relevant.`,
+RULES:
+- Only include chunks worth preserving long-term
+- Append only if chunk DIRECTLY relates to existing note's topic
+- New note titles should be specific and descriptive
+- Tags: lowercase, single word
+- Empty array is fine if nothing valuable`,
     });
     
     // Parse the agent's response
     let parsed: {
-      chunks: Array<{
+      valuableChunks: Array<{
         content: string;
-        importance: string;
-        reason: string;
         action: string;
         existingNoteId: string | null;
         newNoteTitle: string | null;
         newNoteTags: string[];
       }>;
-      overallSummary: string;
+      summary: string;
     };
     
     try {
@@ -238,18 +237,13 @@ REMEMBER:
     }
     
     const actions: Array<{
-      type: 'append' | 'create' | 'discard';
+      type: 'append' | 'create';
       title?: string;
       noteId?: string;
     }> = [];
     
-    // Process each chunk
-    for (const chunk of parsed.chunks) {
-      if (chunk.action === 'discard' || chunk.importance === 'scrap') {
-        actions.push({ type: 'discard' });
-        continue;
-      }
-      
+    // Process each valuable chunk
+    for (const chunk of parsed.valuableChunks || []) {
       if (chunk.action === 'append' && chunk.existingNoteId) {
         // Validate note exists
         const noteExists = existingNotes.some(n => n.id === chunk.existingNoteId);
@@ -293,7 +287,7 @@ REMEMBER:
     
     return {
       processed: true,
-      summary: parsed.overallSummary || "Daily notes processed",
+      summary: parsed.summary || (actions.length > 0 ? "Extracted valuable content" : "No valuable content found"),
       actions,
     };
   },
