@@ -137,10 +137,12 @@ export const processDailyNotes = action({
     processed: boolean;
     summary: string;
     actions: Array<{
-      type: 'append' | 'create';
+      type: 'append' | 'create' | 'skipped';
       title?: string;
       noteId?: string;
       semanticScore?: number;
+      importance?: number;
+      reason?: string;
     }>;
   }> => {
     const { dailyContent, dailyTasks } = args;
@@ -172,40 +174,47 @@ export const processDailyNotes = action({
 ${fullContent}
 ---
 
-EXTRACT valuable content worth preserving long-term. For each piece of valuable content, provide:
-- The exact text to extract
-- A suggested title (if it were to become its own note)
-- Suggested tags (lowercase, single word)
+EXTRACT valuable content worth preserving long-term. For each piece, rate its IMPORTANCE:
+- 5 = Critical insight, major decision, breakthrough idea (MUST be preserved)
+- 4 = Valuable learning, useful reference, good insight (worth preserving)
+- 3 = Moderately useful, context-dependent (only keep if relates to existing notes)
+- 2 = Minor detail (skip - stays in daily note)
+- 1 = Trivial/casual (skip - stays in daily note)
 
-Skip casual/temporary content (weather, meals, small talk).
+Only include chunks with importance >= 3.
 
 OUTPUT JSON:
 {
   "valuableChunks": [
     {
       "content": "exact valuable text to extract",
+      "importance": 5,
       "suggestedTitle": "Descriptive Title For This Content",
-      "suggestedTags": ["tag1", "tag2"]
+      "suggestedTags": ["tag1", "tag2"],
+      "reasoning": "why this is valuable"
     }
   ],
   "summary": "One sentence: what valuable content was found today"
 }
 
 RULES:
-- Only include content worth preserving LONG-TERM
-- Extract the EXACT text, don't paraphrase
-- Titles should be specific and descriptive
-- Tags: lowercase, single word, descriptive
-- Empty array is fine if nothing valuable
-- Be SELECTIVE - quality over quantity`,
+- BE VERY SELECTIVE - most daily notes have 0-2 truly valuable chunks
+- importance 5: Would regret losing this. Major insight/decision.
+- importance 4: Useful long-term. Learning worth referencing later.
+- importance 3: Only valuable IF it relates to an existing topic.
+- Skip casual content (weather, meals, feelings, small talk)
+- Empty array is completely fine - not every day has insights
+- Extract EXACT text, don't paraphrase`,
     });
     
     // Parse the LLM's extraction response
     let parsed: {
       valuableChunks: Array<{
         content: string;
+        importance: number;
         suggestedTitle: string;
         suggestedTags: string[];
+        reasoning?: string;
       }>;
       summary: string;
     };
@@ -234,42 +243,48 @@ RULES:
       };
     }
     
-    console.log(`LLM extracted ${parsed.valuableChunks.length} valuable chunks`);
+    console.log(`LLM extracted ${parsed.valuableChunks.length} chunks`);
     
     // ============================================
     // STEP 2: Use SEMANTIC SEARCH to find matches
-    // (Vector similarity is better than LLM guessing)
+    // Decision logic based on importance:
+    // - Importance 4-5: Keep (append to match OR create new note)
+    // - Importance 3: Only keep if semantic match exists
     // ============================================
     
     const actions: Array<{
-      type: 'append' | 'create';
+      type: 'append' | 'create' | 'skipped';
       title?: string;
       noteId?: string;
       semanticScore?: number;
+      importance?: number;
+      reason?: string;
     }> = [];
     
     for (const chunk of parsed.valuableChunks) {
-      console.log(`Processing chunk: "${chunk.content.substring(0, 50)}..."`);
+      const importance = chunk.importance || 3;
+      console.log(`Processing chunk (importance ${importance}): "${chunk.content.substring(0, 50)}..."`);
       
       // Run semantic search to find the best matching existing note
       const semanticMatches = await ctx.runAction(api.embeddings.semanticSearch, {
         query: chunk.content,
-        limit: 3, // Get top 3 matches
+        limit: 3,
       });
       
-      // Filter out daily/journey notes from matches (we don't want to append to those)
+      // Filter out daily/journey notes from matches
       const validMatches = semanticMatches.filter(
         (match: { tags: string[]; score: number }) => 
           !match.tags.includes('journey') && !match.tags.includes('daily')
       );
       
       const bestMatch = validMatches[0];
+      const hasGoodMatch = bestMatch && bestMatch.score >= SEMANTIC_MATCH_THRESHOLD;
       
-      if (bestMatch && bestMatch.score >= SEMANTIC_MATCH_THRESHOLD) {
+      if (hasGoodMatch) {
         // ============================================
-        // HIGH CONFIDENCE MATCH: Append to existing note
+        // SEMANTIC MATCH FOUND: Append to existing note
         // ============================================
-        console.log(`  → Semantic match found: "${bestMatch.title}" (score: ${bestMatch.score.toFixed(3)})`);
+        console.log(`  → Appending to "${bestMatch.title}" (score: ${bestMatch.score.toFixed(3)})`);
         
         const result = await ctx.runMutation(internal.dailyProcessor.appendToExistingNote, {
           noteId: bestMatch._id,
@@ -281,15 +296,17 @@ RULES:
           title: result.noteTitle,
           noteId: bestMatch._id,
           semanticScore: bestMatch.score,
+          importance,
         });
-      } else {
+      } else if (importance >= 4) {
         // ============================================
-        // NO GOOD MATCH: Create new note
+        // HIGH IMPORTANCE + NO MATCH: Create new note
+        // Only importance 4-5 warrants a new note
         // ============================================
         const scoreInfo = bestMatch 
-          ? `best match "${bestMatch.title}" scored ${bestMatch.score.toFixed(3)} < ${SEMANTIC_MATCH_THRESHOLD}` 
-          : 'no matches found';
-        console.log(`  → Creating new note (${scoreInfo})`);
+          ? `best match scored ${bestMatch.score.toFixed(3)}` 
+          : 'no matches';
+        console.log(`  → Creating new note (importance ${importance}, ${scoreInfo})`);
         
         const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
           title: chunk.suggestedTitle || "Extracted Insight",
@@ -302,6 +319,24 @@ RULES:
           title: result.title,
           noteId: result.noteId,
           semanticScore: bestMatch?.score,
+          importance,
+        });
+      } else {
+        // ============================================
+        // LOW IMPORTANCE + NO MATCH: Skip
+        // Importance 3 without a match stays in daily note
+        // ============================================
+        const scoreInfo = bestMatch 
+          ? `best match scored ${bestMatch.score.toFixed(3)}` 
+          : 'no matches';
+        console.log(`  → Skipping (importance ${importance} too low for new note, ${scoreInfo})`);
+        
+        actions.push({
+          type: 'skipped',
+          title: chunk.suggestedTitle,
+          importance,
+          semanticScore: bestMatch?.score,
+          reason: `Importance ${importance} < 4, no semantic match`,
         });
       }
     }
@@ -309,9 +344,11 @@ RULES:
     // Build summary
     const appendCount = actions.filter(a => a.type === 'append').length;
     const createCount = actions.filter(a => a.type === 'create').length;
+    const skippedCount = actions.filter(a => a.type === 'skipped').length;
     const actionSummary = [];
-    if (appendCount > 0) actionSummary.push(`${appendCount} appended to existing notes`);
-    if (createCount > 0) actionSummary.push(`${createCount} new notes created`);
+    if (appendCount > 0) actionSummary.push(`${appendCount} appended`);
+    if (createCount > 0) actionSummary.push(`${createCount} new notes`);
+    if (skippedCount > 0) actionSummary.push(`${skippedCount} skipped (low importance)`);
     
     return {
       processed: true,
