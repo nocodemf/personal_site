@@ -32,6 +32,7 @@ const CORRECT_PASSWORD = '3016';
 const SESSION_KEY = 'urav_authenticated';
 const TODAY_NOTES_KEY = 'urav_today_notes';
 const TODAY_TASKS_KEY = 'urav_today_tasks';
+const TODAY_DATE_KEY = 'urav_today_date'; // Track when notes were created
 
 // Helper to format relative time
 function getRelativeTime(timestamp: number): string {
@@ -184,32 +185,69 @@ export default function Home() {
   const [todayNotes, setTodayNotes] = useState('');
   const [todayTasks, setTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
   const [dailySaved, setDailySaved] = useState(false);
+  const [pendingYesterdayNotes, setPendingYesterdayNotes] = useState<{
+    notes: string;
+    tasks: {text: string; completed: boolean}[];
+    date: string;
+  } | null>(null);
   
-  // Load Today notes from localStorage on mount
+  // Load Today notes from localStorage on mount - check if from previous day
   useEffect(() => {
     const savedNotes = localStorage.getItem(TODAY_NOTES_KEY);
     const savedTasks = localStorage.getItem(TODAY_TASKS_KEY);
-    if (savedNotes) setTodayNotes(savedNotes);
-    if (savedTasks) {
-      try {
-        setTodayTasks(JSON.parse(savedTasks));
-      } catch (e) {
-        console.error('Failed to parse saved tasks');
+    const savedDate = localStorage.getItem(TODAY_DATE_KEY);
+    const todayDateStr = new Date().toDateString();
+    
+    // If we have saved content from a previous day, queue it for saving
+    if (savedDate && savedDate !== todayDateStr && (savedNotes || savedTasks)) {
+      const tasks = savedTasks ? JSON.parse(savedTasks) : [];
+      if (savedNotes?.trim() || tasks.length > 0) {
+        setPendingYesterdayNotes({
+          notes: savedNotes || '',
+          tasks,
+          date: savedDate,
+        });
+      }
+      // Clear localStorage for new day
+      localStorage.removeItem(TODAY_NOTES_KEY);
+      localStorage.removeItem(TODAY_TASKS_KEY);
+      localStorage.setItem(TODAY_DATE_KEY, todayDateStr);
+    } else {
+      // Same day - load the notes normally
+      if (savedNotes) setTodayNotes(savedNotes);
+      if (savedTasks) {
+        try {
+          setTodayTasks(JSON.parse(savedTasks));
+        } catch (e) {
+          console.error('Failed to parse saved tasks');
+        }
+      }
+      // Set today's date if not set
+      if (!savedDate) {
+        localStorage.setItem(TODAY_DATE_KEY, todayDateStr);
       }
     }
   }, []);
   
-  // Auto-save Today notes to localStorage
+  // Auto-save Today notes to localStorage (with date tracking)
   useEffect(() => {
     if (isHydrated) {
       localStorage.setItem(TODAY_NOTES_KEY, todayNotes);
+      // Always update the date when notes change
+      if (todayNotes.trim()) {
+        localStorage.setItem(TODAY_DATE_KEY, new Date().toDateString());
+      }
     }
   }, [todayNotes, isHydrated]);
   
-  // Auto-save Today tasks to localStorage
+  // Auto-save Today tasks to localStorage (with date tracking)
   useEffect(() => {
     if (isHydrated) {
       localStorage.setItem(TODAY_TASKS_KEY, JSON.stringify(todayTasks));
+      // Always update the date when tasks change
+      if (todayTasks.length > 0) {
+        localStorage.setItem(TODAY_DATE_KEY, new Date().toDateString());
+      }
     }
   }, [todayTasks, isHydrated]);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -346,6 +384,48 @@ export default function Home() {
   const deleteNoteMutation = useMutation(api.updateNotes.deleteNote);
   const analyzeNoteAction = useAction(api.agent.analyzeNote);
   const processDailyNotesAction = useAction(api.dailyProcessor.processDailyNotes);
+  
+  // Auto-save yesterday's notes if they weren't saved
+  useEffect(() => {
+    const saveYesterdayNotes = async () => {
+      if (!pendingYesterdayNotes || !notesData) return;
+      
+      const { notes, tasks, date } = pendingYesterdayNotes;
+      
+      // Format the date from the saved date string
+      const savedDate = new Date(date);
+      const dateStr = savedDate.toLocaleDateString('en-GB', { 
+        weekday: 'long', 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+      });
+      
+      // Format tasks as part of the body
+      const tasksText = tasks.length > 0 
+        ? `**Tasks:**\n${tasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
+        : '';
+      
+      const body = tasksText + (notes || '');
+      const noteCount = notesData.length || 0;
+      
+      try {
+        await createNoteMutation({
+          title: dateStr,
+          body,
+          tags: ['journey'],
+          color: '#B8B8B8',
+          order: noteCount + 1,
+        });
+        console.log('Auto-saved yesterday\'s notes:', dateStr);
+        setPendingYesterdayNotes(null);
+      } catch (error) {
+        console.error('Failed to auto-save yesterday\'s notes:', error);
+      }
+    };
+    
+    saveYesterdayNotes();
+  }, [pendingYesterdayNotes, notesData, createNoteMutation]);
   
   // Archive
   const archiveImagesData = useQuery(api.archive.getImages, archiveFilter ? { category: archiveFilter } : {});
@@ -493,13 +573,17 @@ export default function Home() {
       title: dateStr,
       body,
       color: '#B8B8B8',
-      tags: ['daily'],
+      tags: ['journey'],
       order: noteCount + 1,
     });
     
-    // Clear the daily note and tasks
+    // Clear the daily note and tasks from state AND localStorage
     setTodayNotes('');
     setTodayTasks([]);
+    localStorage.removeItem(TODAY_NOTES_KEY);
+    localStorage.removeItem(TODAY_TASKS_KEY);
+    // Keep date so we know notes were saved today
+    
     setDailySaved(true);
     
     // Reset saved status after a moment
