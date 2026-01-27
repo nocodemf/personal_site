@@ -14,10 +14,10 @@ import type {
 
 // Configuration for WebAuthn
 const RP_NAME = "Urav's Site";
-const RP_ID = process.env.NODE_ENV === "production" ? "urav.site" : "localhost";
-const ORIGIN = process.env.NODE_ENV === "production" 
-  ? "https://urav.site" 
-  : "http://localhost:3000";
+// Use environment variables for domain configuration
+// Set WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN in Convex dashboard for production
+const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
+const ORIGIN = process.env.WEBAUTHN_ORIGIN || "http://localhost:3000";
 
 // Session duration: 7 days
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
