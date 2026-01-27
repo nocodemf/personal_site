@@ -72,17 +72,83 @@ export const processDailyNotesCron = internalAction({
       }
     }
     
+    // ============================================
+    // AI EXTRACTION: Process daily notes with agent
+    // ============================================
+    // After saving the raw daily note, run the AI agent to extract
+    // valuable content and organize it into existing or new notes
+    
+    if (savedNoteIds.length > 0) {
+      // Get today's daily note content for AI processing
+      const dailyNote = await ctx.runQuery(internal.cronHandlers.getDailyNoteContent, { 
+        date: today 
+      });
+      
+      if (dailyNote && (dailyNote.notes.trim() || dailyNote.tasks.length > 0)) {
+        try {
+          console.log(`Running AI extraction agent on daily note...`);
+          
+          // Run AI extraction agent
+          const extractionResult = await ctx.runAction(api.dailyProcessor.processDailyNotes, {
+            dailyContent: dailyNote.notes,
+            dailyTasks: dailyNote.tasks,
+          });
+          
+          console.log(`AI extraction complete: ${extractionResult.summary}`);
+          console.log(`Actions taken: ${extractionResult.actions.length}`);
+          
+          // Generate embeddings for any new/updated notes from extraction
+          const extractedNoteIds: string[] = [];
+          for (const action of extractionResult.actions) {
+            if (action.noteId) {
+              extractedNoteIds.push(action.noteId);
+              try {
+                await ctx.runAction(api.embeddings.embedNote, { noteId: action.noteId as any });
+                console.log(`Generated embedding for extracted note: ${action.title}`);
+              } catch (error) {
+                console.error(`Failed to generate embedding for extracted note ${action.noteId}:`, error);
+              }
+            }
+          }
+          
+          // Recompute heatmap if any notes were extracted/updated
+          if (extractedNoteIds.length > 0) {
+            try {
+              await ctx.runAction(api.heatmap.computePositions, {});
+              console.log(`Recomputed heatmap positions after extraction`);
+            } catch (error) {
+              console.error(`Failed to recompute heatmap after extraction:`, error);
+            }
+          }
+        } catch (error) {
+          console.error(`AI extraction failed:`, error);
+        }
+      }
+    }
+    
     return { savedCount };
   },
 });
 
 // Internal query to get all daily notes (for cron handler)
 import { internalQuery } from "./_generated/server";
+import { v } from "convex/values";
 
 export const getAllDailyNotes = internalQuery({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("dailyNotes").collect();
+  },
+});
+
+// Get daily note content by date (for AI extraction)
+export const getDailyNoteContent = internalQuery({
+  args: { date: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .first();
   },
 });
 
