@@ -25,6 +25,10 @@ const sourceSerif = Source_Serif_4({
 export const metadata: Metadata = {
   title: "Urav Shah",
   description: "Personal site - ventures, travel, food, design, projects, learnings",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/favicon.png",
+  },
   openGraph: {
     title: "Urav Shah",
     description: "Personal site",
