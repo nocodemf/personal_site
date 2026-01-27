@@ -184,7 +184,7 @@ export default function Home() {
   const todayData = useQuery(api.dailyNotes.getToday, {});
   const updateTodayNotesMutation = useMutation(api.dailyNotes.updateNotes);
   const updateTodayTasksMutation = useMutation(api.dailyNotes.updateTasks);
-  const manualSaveToIndexMutation = useMutation(api.dailyNotes.manualSaveToIndex);
+  const manualSaveToIndexAction = useAction(api.dailyNotes.manualSaveToIndex);
   
   // Local state for optimistic UI (syncs with Convex)
   const [localTodayNotes, setLocalTodayNotes] = useState('');
@@ -489,7 +489,7 @@ export default function Home() {
   const saveDailyToIndex = async () => {
     if (!localTodayNotes.trim() && localTodayTasks.length === 0) return;
     
-    const result = await manualSaveToIndexMutation({});
+    const result = await manualSaveToIndexAction({});
     
     if (result.saved) {
       // Clear local state

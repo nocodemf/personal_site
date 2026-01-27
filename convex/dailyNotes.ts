@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { mutation, query, internalMutation, action } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 
 // Get today's date string in YYYY-MM-DD format
 function getTodayDateString(): string {
@@ -95,17 +95,18 @@ export const updateTasks = mutation({
 });
 
 // Internal mutation to save daily note to index (called by cron)
+// Returns the noteId so the cron handler can trigger embedding generation
 export const saveDailyToIndex = internalMutation({
   args: {
     dailyNoteId: v.id("dailyNotes"),
   },
   handler: async (ctx, args) => {
     const dailyNote = await ctx.db.get(args.dailyNoteId);
-    if (!dailyNote || dailyNote.savedToIndex) return { saved: false };
+    if (!dailyNote || dailyNote.savedToIndex) return { saved: false, noteId: null };
     
     // Skip if empty
     if (!dailyNote.notes.trim() && dailyNote.tasks.length === 0) {
-      return { saved: false };
+      return { saved: false, noteId: null };
     }
     
     // Format date for title
@@ -129,7 +130,7 @@ export const saveDailyToIndex = internalMutation({
     const noteCount = allNotes.length;
     
     // Create the permanent note
-    await ctx.db.insert("notes", {
+    const noteId = await ctx.db.insert("notes", {
       title: dateStr,
       body,
       color: '#B8B8B8',
@@ -144,7 +145,7 @@ export const saveDailyToIndex = internalMutation({
       savedToIndex: true,
     });
     
-    return { saved: true, title: dateStr };
+    return { saved: true, title: dateStr, noteId };
   },
 });
 
@@ -162,8 +163,8 @@ export const getUnsavedDailyNotes = query({
   },
 });
 
-// Manual save to index (for the "save to index" button)
-export const manualSaveToIndex = mutation({
+// Internal mutation for manual save (returns noteId for embedding generation)
+export const manualSaveToIndexMutation = internalMutation({
   args: {},
   handler: async (ctx) => {
     const today = getTodayDateString();
@@ -172,11 +173,11 @@ export const manualSaveToIndex = mutation({
       .withIndex("by_date", (q) => q.eq("date", today))
       .first();
     
-    if (!dailyNote || dailyNote.savedToIndex) return { saved: false };
+    if (!dailyNote || dailyNote.savedToIndex) return { saved: false, noteId: null };
     
     // Skip if empty
     if (!dailyNote.notes.trim() && dailyNote.tasks.length === 0) {
-      return { saved: false };
+      return { saved: false, noteId: null };
     }
     
     // Format date for title
@@ -200,7 +201,7 @@ export const manualSaveToIndex = mutation({
     const noteCount = allNotes.length;
     
     // Create the permanent note
-    await ctx.db.insert("notes", {
+    const noteId = await ctx.db.insert("notes", {
       title: dateStr,
       body,
       color: '#B8B8B8',
@@ -217,7 +218,40 @@ export const manualSaveToIndex = mutation({
       tasks: [],
     });
     
-    return { saved: true, title: dateStr };
+    return { saved: true, title: dateStr, noteId };
+  },
+});
+
+// Manual save to index action (for the "save to index" button)
+// This action saves the note AND generates embedding + updates heatmap
+export const manualSaveToIndex = action({
+  args: {},
+  handler: async (ctx): Promise<{ saved: boolean; title: string | null }> => {
+    // Save the note
+    const result: { saved: boolean; noteId: any; title?: string } = await ctx.runMutation(
+      internal.dailyNotes.manualSaveToIndexMutation, 
+      {}
+    );
+    
+    if (result.saved && result.noteId) {
+      // Generate embedding for semantic search & knowledge graph
+      try {
+        await ctx.runAction(api.embeddings.embedNote, { noteId: result.noteId });
+        console.log(`Generated embedding for manually saved note`);
+      } catch (error) {
+        console.error(`Failed to generate embedding:`, error);
+      }
+      
+      // Recompute heatmap positions
+      try {
+        await ctx.runAction(api.heatmap.computePositions, {});
+        console.log(`Recomputed heatmap positions`);
+      } catch (error) {
+        console.error(`Failed to recompute heatmap positions:`, error);
+      }
+    }
+    
+    return { saved: result.saved, title: result.title || null };
   },
 });
 

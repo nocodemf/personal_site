@@ -1,5 +1,5 @@
 import { internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
 
 // Process all unsaved daily notes - runs at 11:45pm daily
 export const processDailyNotesCron = internalAction({
@@ -10,6 +10,7 @@ export const processDailyNotesCron = internalAction({
     
     const today = new Date().toISOString().split('T')[0];
     let savedCount = 0;
+    const savedNoteIds: string[] = [];
     
     for (const dailyNote of allDailyNotes) {
       // Skip today's notes and already saved notes
@@ -23,8 +24,9 @@ export const processDailyNotesCron = internalAction({
           dailyNoteId: dailyNote._id,
         });
         
-        if (result.saved) {
+        if (result.saved && result.noteId) {
           savedCount++;
+          savedNoteIds.push(result.noteId);
           console.log(`Saved daily note for ${dailyNote.date}: ${result.title}`);
         }
       } catch (error) {
@@ -40,12 +42,33 @@ export const processDailyNotesCron = internalAction({
           dailyNoteId: todayNote._id,
         });
         
-        if (result.saved) {
+        if (result.saved && result.noteId) {
           savedCount++;
+          savedNoteIds.push(result.noteId);
           console.log(`Saved today's daily note: ${result.title}`);
         }
       } catch (error) {
         console.error(`Failed to save today's daily note:`, error);
+      }
+    }
+    
+    // Generate embeddings for all saved notes (for semantic search & knowledge graph)
+    for (const noteId of savedNoteIds) {
+      try {
+        await ctx.runAction(api.embeddings.embedNote, { noteId: noteId as any });
+        console.log(`Generated embedding for note ${noteId}`);
+      } catch (error) {
+        console.error(`Failed to generate embedding for note ${noteId}:`, error);
+      }
+    }
+    
+    // Recompute heatmap positions if any notes were saved
+    if (savedNoteIds.length > 0) {
+      try {
+        await ctx.runAction(api.heatmap.computePositions, {});
+        console.log(`Recomputed heatmap positions`);
+      } catch (error) {
+        console.error(`Failed to recompute heatmap positions:`, error);
       }
     }
     
