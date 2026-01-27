@@ -193,11 +193,18 @@ export default function Home() {
   const todayNotesDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const todayTasksDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Sync local state with Convex data on load
+  // Sync local state with Convex data ONLY on initial load (not during typing)
+  // Track which date we've initialized to handle day changes
+  const initializedDateRef = useRef<string | null>(null);
   useEffect(() => {
     if (todayData) {
-      setLocalTodayNotes(todayData.notes);
-      setLocalTodayTasks(todayData.tasks);
+      // Initialize if we haven't, or if the date changed (new day)
+      if (initializedDateRef.current !== todayData.date) {
+        setLocalTodayNotes(todayData.notes);
+        setLocalTodayTasks(todayData.tasks);
+        initializedDateRef.current = todayData.date;
+      }
+      // Always update savedToIndex flag from server (this doesn't affect cursor)
       setDailySaved(todayData.savedToIndex);
     }
   }, [todayData]);
