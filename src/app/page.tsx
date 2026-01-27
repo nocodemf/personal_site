@@ -243,6 +243,15 @@ export default function Home() {
     setIsRegistering(false);
   };
   const [selectedFolder, setSelectedFolder] = useState<number>(0);
+  const [flippedCards, setFlippedCards] = useState<Record<number, boolean>>({});
+  
+  // Toggle card flip
+  const toggleCardFlip = (cardIndex: number) => {
+    setFlippedCards(prev => ({
+      ...prev,
+      [cardIndex]: !prev[cardIndex]
+    }));
+  };
   
   // Map tab index to KPI array index: holding(0)->labs(2), intelligence(1)->studio(1), application(2)->evos(0)
   const tabToKpiIndex = [2, 1, 0]; // holding->labs, intelligence->studio, application->evos
@@ -2162,7 +2171,7 @@ export default function Home() {
             {/* Navigation tabs */}
             <div className="flex gap-6 px-8 mb-4">
               <button
-                onClick={() => setSelectedFolder(0)}
+                onClick={() => { setSelectedFolder(0); setFlippedCards({}); }}
                 className={`text-[16px] font-medium tracking-tight transition-colors ${
                   selectedFolder === 0 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
@@ -2170,7 +2179,7 @@ export default function Home() {
                 holding
               </button>
               <button
-                onClick={() => setSelectedFolder(1)}
+                onClick={() => { setSelectedFolder(1); setFlippedCards({}); }}
                 className={`text-[16px] font-medium tracking-tight transition-colors ${
                   selectedFolder === 1 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
@@ -2178,7 +2187,7 @@ export default function Home() {
                 intelligence
               </button>
               <button
-                onClick={() => setSelectedFolder(2)}
+                onClick={() => { setSelectedFolder(2); setFlippedCards({}); }}
                 className={`text-[16px] font-medium tracking-tight transition-colors ${
                   selectedFolder === 2 ? 'text-black' : 'text-black/30 hover:text-black/50'
                 }`}
@@ -2191,10 +2200,8 @@ export default function Home() {
             <div className="relative w-full h-[calc(100%-50px)] overflow-hidden mx-8" style={{ width: 'calc(100% - 64px)' }}>
               {/* Card 0 - Holding/Labs */}
               <div 
-                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
+                className="absolute inset-0 venture-card-container transition-all duration-500 ease-out"
                 style={{
-                  background: 'rgba(30, 30, 30, 0.4)',
-                  backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 0 
                     ? 'translateX(0)' 
                     : selectedFolder > 0 
@@ -2204,32 +2211,101 @@ export default function Home() {
                   zIndex: selectedFolder === 0 ? 10 : 0,
                 }}
               >
-                {/* Background image */}
                 <div 
-                  className="absolute inset-0 opacity-60"
-                  style={{ 
-                    backgroundImage: 'url(/venture-mountains.png)',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center bottom',
-                  }}
-                />
-                {/* Company name - Xanh Mono */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span 
-                    className="text-[140px] text-white/80"
-                    style={{ letterSpacing: '-10px', fontFamily: 'var(--font-xanh-mono)' }}
+                  className={`venture-card cursor-pointer ${flippedCards[0] ? 'flipped' : ''}`}
+                  onClick={() => toggleCardFlip(0)}
+                >
+                  {/* Front Face */}
+                  <div 
+                    className="venture-card-face"
+                    style={{
+                      background: 'rgba(30, 30, 30, 0.4)',
+                      backdropFilter: 'blur(20px)',
+                    }}
                   >
-                    Exa Labs
-                  </span>
+                    {/* Background image */}
+                    <div 
+                      className="absolute inset-0 opacity-60"
+                      style={{ 
+                        backgroundImage: 'url(/venture-mountains.png)',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center bottom',
+                      }}
+                    />
+                    {/* Company name - Xanh Mono */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span 
+                        className="text-[140px] text-white/80"
+                        style={{ letterSpacing: '-10px', fontFamily: 'var(--font-xanh-mono)' }}
+                      >
+                        Exa Labs
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Back Face - Goals & Outcomes */}
+                  <div className="venture-card-face venture-card-back p-10 flex flex-col bg-[#fafaf8]">
+                    {/* Header */}
+                    <div className="flex items-baseline justify-between mb-8">
+                      <h2 
+                        className="text-[56px] text-[#1a1a1a] leading-[0.9] tracking-[-0.03em]"
+                        style={{ fontFamily: 'var(--font-xanh-mono)' }}
+                      >
+                        Exa Labs
+                      </h2>
+                      <span className="text-[12px] uppercase tracking-[0.2em] text-black/30">Q1 2026</span>
+                    </div>
+                    
+                    {/* Weekly Focus */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">This Week</h3>
+                      <div className="space-y-4">
+                        <div className="border-l-2 border-black pl-4">
+                          <p className="text-[20px] text-black leading-tight mb-1">Ship the prototype</p>
+                          <p className="text-[13px] text-black/50">Get v2 in users' hands for feedback</p>
+                        </div>
+                        <div className="border-l-2 border-black/20 pl-4">
+                          <p className="text-[20px] text-black/80 leading-tight mb-1">5 user interviews</p>
+                          <p className="text-[13px] text-black/40">Deep dive on onboarding friction</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Wins */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Recent Wins</h3>
+                      <div className="flex gap-3 flex-wrap">
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">API v1 shipped ✓</span>
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">First customer ✓</span>
+                      </div>
+                    </div>
+                    
+                    {/* Quarter Goals */}
+                    <div className="flex-1 border-t border-black/10 pt-6">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Quarter Goals</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">100</p>
+                          <p className="text-[12px] text-black/50">active users</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">$500K</p>
+                          <p className="text-[12px] text-black/50">seed round</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">Beta</p>
+                          <p className="text-[12px] text-black/50">public launch</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               
               {/* Card 1 - Intelligence */}
               <div 
-                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
+                className="absolute inset-0 venture-card-container transition-all duration-500 ease-out"
                 style={{
-                  background: 'rgba(255, 255, 252, 0.2)',
-                  backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 1 
                     ? 'translateX(0)' 
                     : selectedFolder > 1 
@@ -2239,35 +2315,104 @@ export default function Home() {
                   zIndex: selectedFolder === 1 ? 10 : 0,
                 }}
               >
-                {/* Inner card */}
-                <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                <div 
+                  className={`venture-card cursor-pointer ${flippedCards[1] ? 'flipped' : ''}`}
+                  onClick={() => toggleCardFlip(1)}
+                >
+                  {/* Front Face */}
                   <div 
-                    className="absolute inset-0"
-                    style={{ 
-                      backgroundImage: 'url(/venture-port.png)',
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
+                    className="venture-card-face"
+                    style={{
+                      background: 'rgba(255, 255, 252, 0.2)',
+                      backdropFilter: 'blur(20px)',
                     }}
-                  />
-                  <div className="absolute inset-0 bg-black/30" />
-                  {/* Company name - Inter */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span 
-                      className="text-[100px] font-light text-white/90 text-center"
-                      style={{ letterSpacing: '-6px', fontFamily: 'var(--font-inter)' }}
-                    >
-                      Exa Intelligence
-                    </span>
+                  >
+                    {/* Inner card */}
+                    <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                      <div 
+                        className="absolute inset-0"
+                        style={{ 
+                          backgroundImage: 'url(/venture-port.png)',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/30" />
+                      {/* Company name - Inter */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span 
+                          className="text-[100px] font-light text-white/90 text-center"
+                          style={{ letterSpacing: '-6px', fontFamily: 'var(--font-inter)' }}
+                        >
+                          Exa Intelligence
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Back Face - Goals & Outcomes */}
+                  <div className="venture-card-face venture-card-back p-10 flex flex-col bg-[#fafaf8]">
+                    {/* Header */}
+                    <div className="flex items-baseline justify-between mb-8">
+                      <h2 
+                        className="text-[48px] text-[#1a1a1a] leading-[0.9] font-light tracking-[-0.02em]"
+                        style={{ fontFamily: 'var(--font-inter)' }}
+                      >
+                        Exa Intelligence
+                      </h2>
+                      <span className="text-[12px] uppercase tracking-[0.2em] text-black/30">Q1 2026</span>
+                    </div>
+                    
+                    {/* Weekly Focus */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">This Week</h3>
+                      <div className="space-y-4">
+                        <div className="border-l-2 border-black pl-4">
+                          <p className="text-[20px] text-black leading-tight mb-1">Train model v3</p>
+                          <p className="text-[13px] text-black/50">Push accuracy past 95% threshold</p>
+                        </div>
+                        <div className="border-l-2 border-black/20 pl-4">
+                          <p className="text-[20px] text-black/80 leading-tight mb-1">Optimize inference</p>
+                          <p className="text-[13px] text-black/40">Sub-100ms latency target</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Wins */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Recent Wins</h3>
+                      <div className="flex gap-3 flex-wrap">
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">95% accuracy ✓</span>
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">&lt;100ms latency ✓</span>
+                      </div>
+                    </div>
+                    
+                    {/* Quarter Goals */}
+                    <div className="flex-1 border-t border-black/10 pt-6">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Quarter Goals</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">Prod</p>
+                          <p className="text-[12px] text-black/50">deployment</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">10M</p>
+                          <p className="text-[12px] text-black/50">tokens/day</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">Multi</p>
+                          <p className="text-[12px] text-black/50">modal</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
               
               {/* Card 2 - Application */}
               <div 
-                className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-500 ease-out"
+                className="absolute inset-0 venture-card-container transition-all duration-500 ease-out"
                 style={{
-                  background: 'rgba(255, 255, 252, 0.2)',
-                  backdropFilter: 'blur(20px)',
                   transform: selectedFolder === 2 
                     ? 'translateX(0)' 
                     : selectedFolder > 2 
@@ -2277,25 +2422,96 @@ export default function Home() {
                   zIndex: selectedFolder === 2 ? 10 : 0,
                 }}
               >
-                {/* Inner card */}
-                <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                <div 
+                  className={`venture-card cursor-pointer ${flippedCards[2] ? 'flipped' : ''}`}
+                  onClick={() => toggleCardFlip(2)}
+                >
+                  {/* Front Face */}
                   <div 
-                    className="absolute inset-0"
-                    style={{ 
-                      backgroundImage: 'url(/venture-market.png)',
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
+                    className="venture-card-face"
+                    style={{
+                      background: 'rgba(255, 255, 252, 0.2)',
+                      backdropFilter: 'blur(20px)',
                     }}
-                  />
-                  <div className="absolute inset-0 bg-black/30" />
-                  {/* Company name - Source Serif Pro */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span 
-                      className="text-[140px] text-white/90"
-                      style={{ letterSpacing: '-8px', fontFamily: 'var(--font-source-serif)' }}
-                    >
-                      Evos
-                    </span>
+                  >
+                    {/* Inner card */}
+                    <div className="absolute inset-6 rounded-xl overflow-hidden bg-[#e8e8e3]">
+                      <div 
+                        className="absolute inset-0"
+                        style={{ 
+                          backgroundImage: 'url(/venture-market.png)',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/30" />
+                      {/* Company name - Source Serif Pro */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span 
+                          className="text-[140px] text-white/90"
+                          style={{ letterSpacing: '-8px', fontFamily: 'var(--font-source-serif)' }}
+                        >
+                          Evos
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Back Face - Goals & Outcomes */}
+                  <div className="venture-card-face venture-card-back p-10 flex flex-col bg-[#fafaf8]">
+                    {/* Header */}
+                    <div className="flex items-baseline justify-between mb-8">
+                      <h2 
+                        className="text-[56px] text-[#1a1a1a] leading-[0.9] tracking-[-0.03em]"
+                        style={{ fontFamily: 'var(--font-source-serif)' }}
+                      >
+                        Evos
+                      </h2>
+                      <span className="text-[12px] uppercase tracking-[0.2em] text-black/30">Q1 2026</span>
+                    </div>
+                    
+                    {/* Weekly Focus */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">This Week</h3>
+                      <div className="space-y-4">
+                        <div className="border-l-2 border-black pl-4">
+                          <p className="text-[20px] text-black leading-tight mb-1">Close 3 enterprise deals</p>
+                          <p className="text-[13px] text-black/50">Pipeline is hot — execute</p>
+                        </div>
+                        <div className="border-l-2 border-black/20 pl-4">
+                          <p className="text-[20px] text-black/80 leading-tight mb-1">Hire senior engineer</p>
+                          <p className="text-[13px] text-black/40">Final interviews this week</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Wins */}
+                    <div className="mb-8">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Recent Wins</h3>
+                      <div className="flex gap-3 flex-wrap">
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">$240K MRR ✓</span>
+                        <span className="px-3 py-1.5 bg-black text-white text-[13px] rounded-full">Series A term sheet ✓</span>
+                      </div>
+                    </div>
+                    
+                    {/* Quarter Goals */}
+                    <div className="flex-1 border-t border-black/10 pt-6">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-black/40 mb-4">Quarter Goals</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">$500K</p>
+                          <p className="text-[12px] text-black/50">ARR</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">3</p>
+                          <p className="text-[12px] text-black/50">markets</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[32px] font-light text-black leading-none mb-1">10</p>
+                          <p className="text-[12px] text-black/50">team size</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
