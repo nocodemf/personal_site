@@ -32,6 +32,24 @@ function generateRandomToken(): string {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+// Helper to encode Uint8Array to base64url (no Buffer in Convex runtime)
+function uint8ArrayToBase64url(bytes: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...bytes));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Helper to decode base64url to Uint8Array
+function base64urlToUint8Array(base64url: string): Uint8Array {
+  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 // ============================================
 // Public Queries
 // ============================================
@@ -338,7 +356,7 @@ export const verifyRegistration = action({
       // Store the credential
       await ctx.runMutation(internal.passkey.storePasskeyInternal, {
         credentialId: credential.id,
-        publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+        publicKey: uint8ArrayToBase64url(new Uint8Array(credential.publicKey)),
         counter: credential.counter,
         deviceName: args.deviceName,
         transports: response.response.transports,
@@ -448,7 +466,7 @@ export const verifyAuthentication = action({
         expectedRPID: expectedRpId,
         credential: {
           id: passkeyData.credentialId,
-          publicKey: Buffer.from(passkeyData.publicKey, "base64url"),
+          publicKey: base64urlToUint8Array(passkeyData.publicKey) as Uint8Array<ArrayBuffer>,
           counter: passkeyData.counter,
         },
       });
