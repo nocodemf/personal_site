@@ -19,6 +19,7 @@ import type * as embeddings from "../embeddings.js";
 import type * as heatmap from "../heatmap.js";
 import type * as http from "../http.js";
 import type * as knowledgeGraph from "../knowledgeGraph.js";
+import type * as passkey from "../passkey.js";
 import type * as seed from "../seed.js";
 import type * as updateNotes from "../updateNotes.js";
 import type * as whatsappBot from "../whatsappBot.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   heatmap: typeof heatmap;
   http: typeof http;
   knowledgeGraph: typeof knowledgeGraph;
+  passkey: typeof passkey;
   seed: typeof seed;
   updateNotes: typeof updateNotes;
   whatsappBot: typeof whatsappBot;

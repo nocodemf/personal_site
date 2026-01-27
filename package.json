@@ -11,6 +11,9 @@
   "dependencies": {
     "@ai-sdk/openai": "latest",
     "@convex-dev/agent": "latest",
+    "@simplewebauthn/browser": "^13.2.2",
+    "@simplewebauthn/server": "^13.2.2",
+    "@simplewebauthn/types": "^12.0.0",
     "ai": "latest",
     "convex": "latest",
     "next": "16.1.4",

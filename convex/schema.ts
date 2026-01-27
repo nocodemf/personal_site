@@ -109,5 +109,31 @@ export default defineSchema({
     savedToIndex: v.boolean(), // Has this been saved as a permanent note?
     updatedAt: v.number(),
   }).index("by_date", ["date"]),
+
+  // Passkey credentials for biometric authentication (single user)
+  passkeys: defineTable({
+    credentialId: v.string(), // Base64url-encoded credential ID
+    publicKey: v.string(), // Base64url-encoded public key
+    counter: v.number(), // Signature counter for replay attack prevention
+    deviceName: v.string(), // e.g., "MacBook Pro", "iPhone 15"
+    transports: v.optional(v.array(v.string())), // e.g., ["internal", "hybrid"]
+    createdAt: v.number(),
+  }).index("by_credentialId", ["credentialId"]),
+
+  // Auth sessions for persistent login
+  authSessions: defineTable({
+    token: v.string(), // Random session token
+    credentialId: v.string(), // Which passkey was used
+    expiresAt: v.number(), // Expiration timestamp
+    createdAt: v.number(),
+  }).index("by_token", ["token"]),
+
+  // Challenges for WebAuthn (temporary, cleaned up after use)
+  authChallenges: defineTable({
+    challenge: v.string(), // Base64url-encoded challenge
+    type: v.string(), // "registration" or "authentication"
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_challenge", ["challenge"]),
 });
 

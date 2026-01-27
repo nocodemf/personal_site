@@ -6,6 +6,7 @@ import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { PixelCharacter, AnimationPhase } from "@/components/PixelCharacter";
 import { KnowledgeHeatmap } from "@/components/KnowledgeHeatmap";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 
 type Stage = 'password' | 'first' | 'transitioning' | 'second';
 
@@ -30,6 +31,7 @@ function useIsMobile() {
 
 const CORRECT_PASSWORD = '3016';
 const SESSION_KEY = 'urav_authenticated';
+const PASSKEY_SESSION_KEY = 'urav_passkey_session';
 
 // Helper to format relative time
 function getRelativeTime(timestamp: number): string {
@@ -100,15 +102,42 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const isMobile = useIsMobile();
   
-  // Check session on mount
+  // Passkey authentication state
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  
+  // Passkey queries and actions
+  const hasPasskeys = useQuery(api.passkey.hasPasskeys);
+  const getRegistrationOptions = useAction(api.passkey.getRegistrationOptions);
+  const verifyRegistration = useAction(api.passkey.verifyRegistration);
+  const getAuthenticationOptions = useAction(api.passkey.getAuthenticationOptions);
+  const verifyAuthentication = useAction(api.passkey.verifyAuthentication);
+  const validateSession = useQuery(api.passkey.validateSession, 
+    typeof window !== 'undefined' && localStorage.getItem(PASSKEY_SESSION_KEY)
+      ? { token: localStorage.getItem(PASSKEY_SESSION_KEY)! }
+      : "skip"
+  );
+  
+  // Check session on mount (passkey session first, then legacy session)
   useEffect(() => {
+    // Check passkey session from localStorage
+    const passkeyToken = localStorage.getItem(PASSKEY_SESSION_KEY);
+    if (passkeyToken && validateSession?.valid) {
+      setStage('second');
+      setShowAbout(true);
+      setIsHydrated(true);
+      return;
+    }
+    
+    // Fallback to legacy session
     const isAuthenticated = sessionStorage.getItem(SESSION_KEY);
     if (isAuthenticated === 'true') {
       setStage('second');
       setShowAbout(true);
     }
     setIsHydrated(true);
-  }, []);
+  }, [validateSession]);
   
   // Save session when authenticated
   useEffect(() => {
@@ -116,6 +145,99 @@ export default function Home() {
       sessionStorage.setItem(SESSION_KEY, 'true');
     }
   }, [stage]);
+  
+  // Handle biometric authentication (arrow click)
+  const handleBiometricAuth = async () => {
+    setAuthError(null);
+    setIsAuthenticating(true);
+    
+    try {
+      // Get authentication options from server
+      const optionsResponse = await getAuthenticationOptions();
+      if ('error' in optionsResponse && optionsResponse.error) {
+        setAuthError(optionsResponse.error);
+        setIsAuthenticating(false);
+        return;
+      }
+      
+      if (!optionsResponse.options) {
+        setAuthError('Failed to get authentication options');
+        setIsAuthenticating(false);
+        return;
+      }
+      
+      // Trigger biometric prompt
+      const authResponse = await startAuthentication({ optionsJSON: optionsResponse.options });
+      
+      // Verify with server
+      const verification = await verifyAuthentication({ response: authResponse });
+      
+      if (verification.success && verification.sessionToken) {
+        // Store session token
+        localStorage.setItem(PASSKEY_SESSION_KEY, verification.sessionToken);
+        // Start the animation
+        setStage('first');
+      } else {
+        setAuthError(verification.error || 'Authentication failed');
+      }
+    } catch (error: unknown) {
+      console.error('Biometric auth error:', error);
+      if (error instanceof Error && error.name === 'NotAllowedError') {
+        setAuthError('Authentication cancelled');
+      } else {
+        setAuthError('Authentication failed');
+      }
+    }
+    
+    setIsAuthenticating(false);
+  };
+  
+  // Handle device registration (after PIN verification)
+  const handleRegisterDevice = async () => {
+    setAuthError(null);
+    setIsRegistering(true);
+    
+    try {
+      // Detect device name
+      const userAgent = navigator.userAgent;
+      let deviceName = 'Unknown Device';
+      if (/iPhone/.test(userAgent)) deviceName = 'iPhone';
+      else if (/iPad/.test(userAgent)) deviceName = 'iPad';
+      else if (/Macintosh/.test(userAgent)) deviceName = 'MacBook';
+      else if (/Android/.test(userAgent)) deviceName = 'Android';
+      else if (/Windows/.test(userAgent)) deviceName = 'Windows PC';
+      
+      // Get registration options from server
+      const { options } = await getRegistrationOptions({ deviceName });
+      
+      // Trigger biometric enrollment
+      const regResponse = await startRegistration({ optionsJSON: options });
+      
+      // Verify and store with server
+      const verification = await verifyRegistration({ 
+        response: regResponse, 
+        deviceName 
+      });
+      
+      if (verification.success && verification.sessionToken) {
+        // Store session token
+        localStorage.setItem(PASSKEY_SESSION_KEY, verification.sessionToken);
+        // Start the animation
+        setStage('first');
+      } else {
+        setAuthError(verification.error || 'Registration failed');
+      }
+    } catch (error: unknown) {
+      console.error('Registration error:', error);
+      if (error instanceof Error && error.name === 'NotAllowedError') {
+        setAuthError('Registration cancelled');
+      } else {
+        setAuthError('Registration failed');
+      }
+    }
+    
+    setIsRegistering(false);
+  };
   const [selectedFolder, setSelectedFolder] = useState<number>(0);
   
   // Map tab index to KPI array index: holding(0)->labs(2), intelligence(1)->studio(1), application(2)->evos(0)
@@ -709,13 +831,20 @@ export default function Home() {
   // Handle password submission on Enter key
   const handlePasswordKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && password === CORRECT_PASSWORD && stage === 'password') {
-      setStage('first');
+      // If no passkeys registered, trigger registration after correct PIN
+      if (hasPasskeys === false) {
+        handleRegisterDevice();
+      } else {
+        // Fallback: allow PIN login if passkeys exist but biometric fails
+        setStage('first');
+      }
     }
   };
 
   // Handle logout - clears session but keeps data in Convex
   const handleLogout = () => {
     sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(PASSKEY_SESSION_KEY);
     setStage('password');
     setShowAbout(false);
     setActiveView('home');
@@ -732,7 +861,7 @@ export default function Home() {
   
   return (
     <main className="h-screen w-screen bg-[#fffffc] relative overflow-hidden">
-      {/* Password stage - character centered with password input */}
+      {/* Password stage - character centered with arrow or password input */}
       {stage === 'password' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
           <PixelCharacter 
@@ -740,16 +869,43 @@ export default function Home() {
             startPhase="idle"
             autoWalk={false}
           />
-          <div className="mt-8">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={handlePasswordKeyDown}
-              placeholder="enter password"
-              className="px-4 py-2 text-[14px] text-center bg-transparent border-b border-black/20 focus:border-black/40 outline-none transition-colors w-48 placeholder:text-black/30 focus:placeholder:text-transparent"
-              autoFocus
-            />
+          <div className="mt-8 flex flex-col items-center">
+            {/* Show arrow for biometric auth if passkeys exist */}
+            {hasPasskeys === true ? (
+              <button
+                onClick={handleBiometricAuth}
+                disabled={isAuthenticating}
+                className="text-[24px] text-black/40 hover:text-black transition-colors disabled:opacity-50"
+                aria-label="Authenticate with Face ID or Touch ID"
+              >
+                {isAuthenticating ? '...' : '→'}
+              </button>
+            ) : hasPasskeys === false ? (
+              // No passkeys - show PIN input for first-time registration
+              <div className="flex flex-col items-center gap-2">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handlePasswordKeyDown}
+                  placeholder="enter pin to setup"
+                  className="px-4 py-2 text-[14px] text-center bg-transparent border-b border-black/20 focus:border-black/40 outline-none transition-colors w-48 placeholder:text-black/30 focus:placeholder:text-transparent"
+                  autoFocus
+                  disabled={isRegistering}
+                />
+                {isRegistering && (
+                  <span className="text-[12px] text-black/40">registering device...</span>
+                )}
+              </div>
+            ) : (
+              // Loading state while checking passkeys
+              <span className="text-[14px] text-black/30">...</span>
+            )}
+            
+            {/* Error message */}
+            {authError && (
+              <p className="mt-2 text-[12px] text-red-500">{authError}</p>
+            )}
           </div>
         </div>
       )}
