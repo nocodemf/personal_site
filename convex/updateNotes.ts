@@ -53,15 +53,37 @@ export const updateNote = mutation({
     id: v.id("notes"),
     title: v.optional(v.string()),
     body: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const updates: { title?: string; body?: string; updatedAt: number } = {
+    const updates: { title?: string; body?: string; tags?: string[]; updatedAt: number } = {
       updatedAt: Date.now(),
     };
     if (args.title !== undefined) updates.title = args.title;
     if (args.body !== undefined) updates.body = args.body;
+    if (args.tags !== undefined) updates.tags = args.tags;
     
     await ctx.db.patch(args.id, updates);
+  },
+});
+
+// Remove a specific tag from a note
+export const removeTagFromNote = mutation({
+  args: {
+    noteId: v.id("notes"),
+    tag: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const note = await ctx.db.get(args.noteId);
+    if (!note) throw new Error("Note not found");
+    
+    const newTags = note.tags.filter(t => t !== args.tag);
+    await ctx.db.patch(args.noteId, {
+      tags: newTags,
+      updatedAt: Date.now(),
+    });
+    
+    return { tags: newTags };
   },
 });
 

@@ -256,10 +256,8 @@ export default function Home() {
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const titleAutoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Reset editing state when switching notes
+  // Reset editing mode when switching notes (the actual values are set in the other useEffect)
   useEffect(() => {
-    setEditingTitle(null);
-    setEditingBody(null);
     setIsEditingBody(false);
   }, [selectedNoteId]);
   
@@ -350,17 +348,21 @@ export default function Home() {
   // Fetch heatmap data for graph view
   const heatmapData = useQuery(api.heatmap.getHeatmapData, {});
   
-  // Initialize editing body when note is selected
+  // Initialize editing state when note is selected
+  const prevNoteIdRef = useRef<Id<"notes"> | null>(null);
   useEffect(() => {
-    if (selectedNoteId && notesData) {
+    if (selectedNoteId && notesData && selectedNoteId !== prevNoteIdRef.current) {
       const note = notesData.find(n => n._id === selectedNoteId);
-      if (note && editingBody === null) {
+      if (note) {
+        setEditingTitle(note.title || '');
         setEditingBody(note.body || '');
+        prevNoteIdRef.current = selectedNoteId;
       }
     }
-  }, [selectedNoteId, notesData, editingBody]);
+  }, [selectedNoteId, notesData]);
   const updateNoteMutation = useMutation(api.updateNotes.updateNote);
   const deleteNoteMutation = useMutation(api.updateNotes.deleteNote);
+  const removeTagMutation = useMutation(api.updateNotes.removeTagFromNote);
   const analyzeNoteAction = useAction(api.agent.analyzeNote);
   
   // Archive
@@ -433,6 +435,11 @@ export default function Home() {
   const handleSaveBody = async (newBody: string) => {
     if (!selectedNoteId) return;
     await updateNoteMutation({ id: selectedNoteId, body: newBody });
+  };
+  
+  const handleRemoveTag = async (tag: string) => {
+    if (!selectedNoteId) return;
+    await removeTagMutation({ noteId: selectedNoteId, tag });
   };
   
   // Debounced auto-save for note body
@@ -954,21 +961,27 @@ export default function Home() {
               </div>
               <div className="flex-1 overflow-y-auto px-4 pb-6">
                 <input
-                  value={editingTitle ?? selectedNoteData.title}
+                  value={editingTitle || ''}
                   onChange={(e) => handleTitleChange(e.target.value)}
                   className="text-[20px] font-semibold text-black w-full bg-transparent outline-none mb-2"
                 />
                 <p className="text-[12px] text-black/40 mb-4">{selectedNoteData.date}</p>
                 <div className="flex flex-wrap gap-2 mb-6">
                   {selectedNoteData.tags.map(tag => (
-                    <span key={tag} className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase">
+                    <span key={tag} className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase flex items-center gap-1 group">
                       {tag}
+                      <button 
+                        onClick={() => handleRemoveTag(tag)}
+                        className="text-black/30 hover:text-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
                     </span>
                   ))}
                 </div>
                 {isEditingBody ? (
                   <textarea
-                    value={editingBody ?? selectedNoteData.body ?? ''}
+                    value={editingBody || ''}
                     onChange={(e) => handleBodyChange(e.target.value)}
                     onBlur={() => setIsEditingBody(false)}
                     autoFocus
@@ -2407,7 +2420,7 @@ export default function Home() {
             {/* Editable Title - always editable, seamless */}
             <input
               type="text"
-              value={editingTitle ?? selectedNoteData.title}
+              value={editingTitle || ''}
               onChange={(e) => handleTitleChange(e.target.value)}
               className="text-[18px] font-semibold text-black uppercase tracking-wide mb-2 w-full bg-transparent outline-none"
             />
@@ -2415,19 +2428,29 @@ export default function Home() {
             {/* Tags row - in containers like table */}
             <div className="flex gap-2 mb-8">
               {selectedNoteData.tags.map(tag => (
-                <button 
+                <span 
                   key={tag} 
-                  onClick={() => {
-                    const tagWithHash = `#${tag}`;
-                    if (!selectedTags.includes(tagWithHash)) {
-                      setSelectedTags(prev => [...prev, tagWithHash]);
-                    }
-                    setSelectedNoteId(null);
-                  }}
-                  className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase hover:bg-black/5 transition-colors"
+                  className="text-[10px] text-black/60 border border-black/20 rounded px-2 py-0.5 uppercase flex items-center gap-1.5 group"
                 >
-                  {tag}
-                </button>
+                  <button
+                    onClick={() => {
+                      const tagWithHash = `#${tag}`;
+                      if (!selectedTags.includes(tagWithHash)) {
+                        setSelectedTags(prev => [...prev, tagWithHash]);
+                      }
+                      setSelectedNoteId(null);
+                    }}
+                    className="hover:text-black transition-colors"
+                  >
+                    {tag}
+                  </button>
+                  <button 
+                    onClick={() => handleRemoveTag(tag)}
+                    className="text-black/30 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
             </div>
             
