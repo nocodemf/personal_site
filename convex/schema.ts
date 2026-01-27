@@ -97,5 +97,17 @@ export default defineSchema({
     read: v.boolean(),
     createdAt: v.number(),
   }),
+
+  // Daily notes (Today view) - stored server-side for scheduled processing
+  dailyNotes: defineTable({
+    date: v.string(), // "2026-01-27" format for the day
+    notes: v.string(), // Free-form notes content
+    tasks: v.array(v.object({
+      text: v.string(),
+      completed: v.boolean(),
+    })),
+    savedToIndex: v.boolean(), // Has this been saved as a permanent note?
+    updatedAt: v.number(),
+  }).index("by_date", ["date"]),
 });
 

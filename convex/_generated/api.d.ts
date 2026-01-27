@@ -11,6 +11,9 @@
 import type * as agent from "../agent.js";
 import type * as archive from "../archive.js";
 import type * as content from "../content.js";
+import type * as cronHandlers from "../cronHandlers.js";
+import type * as crons from "../crons.js";
+import type * as dailyNotes from "../dailyNotes.js";
 import type * as dailyProcessor from "../dailyProcessor.js";
 import type * as embeddings from "../embeddings.js";
 import type * as heatmap from "../heatmap.js";
@@ -30,6 +33,9 @@ declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   archive: typeof archive;
   content: typeof content;
+  cronHandlers: typeof cronHandlers;
+  crons: typeof crons;
+  dailyNotes: typeof dailyNotes;
   dailyProcessor: typeof dailyProcessor;
   embeddings: typeof embeddings;
   heatmap: typeof heatmap;

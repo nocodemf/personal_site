@@ -30,9 +30,6 @@ function useIsMobile() {
 
 const CORRECT_PASSWORD = '3016';
 const SESSION_KEY = 'urav_authenticated';
-const TODAY_NOTES_KEY = 'urav_today_notes';
-const TODAY_TASKS_KEY = 'urav_today_tasks';
-const TODAY_DATE_KEY = 'urav_today_date'; // Track when notes were created
 
 // Helper to format relative time
 function getRelativeTime(timestamp: number): string {
@@ -182,74 +179,54 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const semanticSearchAction = useAction(api.embeddings.semanticSearch);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const [todayNotes, setTodayNotes] = useState('');
-  const [todayTasks, setTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
+  
+  // Today notes - stored in Convex (server-side)
+  const todayData = useQuery(api.dailyNotes.getToday, {});
+  const updateTodayNotesMutation = useMutation(api.dailyNotes.updateNotes);
+  const updateTodayTasksMutation = useMutation(api.dailyNotes.updateTasks);
+  const manualSaveToIndexMutation = useMutation(api.dailyNotes.manualSaveToIndex);
+  
+  // Local state for optimistic UI (syncs with Convex)
+  const [localTodayNotes, setLocalTodayNotes] = useState('');
+  const [localTodayTasks, setLocalTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
   const [dailySaved, setDailySaved] = useState(false);
-  const [pendingYesterdayNotes, setPendingYesterdayNotes] = useState<{
-    notes: string;
-    tasks: {text: string; completed: boolean}[];
-    date: string;
-  } | null>(null);
+  const todayNotesDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const todayTasksDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Load Today notes from localStorage on mount - check if from previous day
+  // Sync local state with Convex data on load
   useEffect(() => {
-    const savedNotes = localStorage.getItem(TODAY_NOTES_KEY);
-    const savedTasks = localStorage.getItem(TODAY_TASKS_KEY);
-    const savedDate = localStorage.getItem(TODAY_DATE_KEY);
-    const todayDateStr = new Date().toDateString();
+    if (todayData) {
+      setLocalTodayNotes(todayData.notes);
+      setLocalTodayTasks(todayData.tasks);
+      setDailySaved(todayData.savedToIndex);
+    }
+  }, [todayData]);
+  
+  // Debounced save to Convex when notes change
+  const handleTodayNotesChange = (newNotes: string) => {
+    setLocalTodayNotes(newNotes);
     
-    // If we have saved content from a previous day, queue it for saving
-    if (savedDate && savedDate !== todayDateStr && (savedNotes || savedTasks)) {
-      const tasks = savedTasks ? JSON.parse(savedTasks) : [];
-      if (savedNotes?.trim() || tasks.length > 0) {
-        setPendingYesterdayNotes({
-          notes: savedNotes || '',
-          tasks,
-          date: savedDate,
-        });
-      }
-      // Clear localStorage for new day
-      localStorage.removeItem(TODAY_NOTES_KEY);
-      localStorage.removeItem(TODAY_TASKS_KEY);
-      localStorage.setItem(TODAY_DATE_KEY, todayDateStr);
-    } else {
-      // Same day - load the notes normally
-      if (savedNotes) setTodayNotes(savedNotes);
-      if (savedTasks) {
-        try {
-          setTodayTasks(JSON.parse(savedTasks));
-        } catch (e) {
-          console.error('Failed to parse saved tasks');
-        }
-      }
-      // Set today's date if not set
-      if (!savedDate) {
-        localStorage.setItem(TODAY_DATE_KEY, todayDateStr);
-      }
+    if (todayNotesDebounceRef.current) {
+      clearTimeout(todayNotesDebounceRef.current);
     }
-  }, []);
+    
+    todayNotesDebounceRef.current = setTimeout(() => {
+      updateTodayNotesMutation({ notes: newNotes });
+    }, 500); // Save after 500ms of no typing
+  };
   
-  // Auto-save Today notes to localStorage (with date tracking)
-  useEffect(() => {
-    if (isHydrated) {
-      localStorage.setItem(TODAY_NOTES_KEY, todayNotes);
-      // Always update the date when notes change
-      if (todayNotes.trim()) {
-        localStorage.setItem(TODAY_DATE_KEY, new Date().toDateString());
-      }
+  // Debounced save to Convex when tasks change
+  const handleTodayTasksChange = (newTasks: {text: string; completed: boolean}[]) => {
+    setLocalTodayTasks(newTasks);
+    
+    if (todayTasksDebounceRef.current) {
+      clearTimeout(todayTasksDebounceRef.current);
     }
-  }, [todayNotes, isHydrated]);
-  
-  // Auto-save Today tasks to localStorage (with date tracking)
-  useEffect(() => {
-    if (isHydrated) {
-      localStorage.setItem(TODAY_TASKS_KEY, JSON.stringify(todayTasks));
-      // Always update the date when tasks change
-      if (todayTasks.length > 0) {
-        localStorage.setItem(TODAY_DATE_KEY, new Date().toDateString());
-      }
-    }
-  }, [todayTasks, isHydrated]);
+    
+    todayTasksDebounceRef.current = setTimeout(() => {
+      updateTodayTasksMutation({ tasks: newTasks });
+    }, 500);
+  };
   const [currentTime, setCurrentTime] = useState(new Date());
   const [archiveFilter, setArchiveFilter] = useState<string | null>(null);
   const [archiveFilterExpanded, setArchiveFilterExpanded] = useState(true);
@@ -346,15 +323,17 @@ export default function Home() {
   
   const addTask = () => {
     if (newTask.trim()) {
-      setTodayTasks(prev => [...prev, { text: newTask.trim(), completed: false }]);
+      const newTasks = [...localTodayTasks, { text: newTask.trim(), completed: false }];
+      handleTodayTasksChange(newTasks);
       setNewTask('');
     }
   };
   
   const toggleTask = (idx: number) => {
-    setTodayTasks(prev => prev.map((task, i) => 
+    const newTasks = localTodayTasks.map((task, i) => 
       i === idx ? { ...task, completed: !task.completed } : task
-    ));
+    );
+    handleTodayTasksChange(newTasks);
   };
   
   // Fetch notes and tags from Convex
@@ -383,49 +362,6 @@ export default function Home() {
   const updateNoteMutation = useMutation(api.updateNotes.updateNote);
   const deleteNoteMutation = useMutation(api.updateNotes.deleteNote);
   const analyzeNoteAction = useAction(api.agent.analyzeNote);
-  const processDailyNotesAction = useAction(api.dailyProcessor.processDailyNotes);
-  
-  // Auto-save yesterday's notes if they weren't saved
-  useEffect(() => {
-    const saveYesterdayNotes = async () => {
-      if (!pendingYesterdayNotes || !notesData) return;
-      
-      const { notes, tasks, date } = pendingYesterdayNotes;
-      
-      // Format the date from the saved date string
-      const savedDate = new Date(date);
-      const dateStr = savedDate.toLocaleDateString('en-GB', { 
-        weekday: 'long', 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric' 
-      });
-      
-      // Format tasks as part of the body
-      const tasksText = tasks.length > 0 
-        ? `**Tasks:**\n${tasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
-        : '';
-      
-      const body = tasksText + (notes || '');
-      const noteCount = notesData.length || 0;
-      
-      try {
-        await createNoteMutation({
-          title: dateStr,
-          body,
-          tags: ['journey'],
-          color: '#B8B8B8',
-          order: noteCount + 1,
-        });
-        console.log('Auto-saved yesterday\'s notes:', dateStr);
-        setPendingYesterdayNotes(null);
-      } catch (error) {
-        console.error('Failed to auto-save yesterday\'s notes:', error);
-      }
-    };
-    
-    saveYesterdayNotes();
-  }, [pendingYesterdayNotes, notesData, createNoteMutation]);
   
   // Archive
   const archiveImagesData = useQuery(api.archive.getImages, archiveFilter ? { category: archiveFilter } : {});
@@ -549,87 +485,30 @@ export default function Home() {
     }
   };
   
-  // Save daily note to index with 'journey' tag
+  // Save daily note to index (manual button) - uses Convex mutation
   const saveDailyToIndex = async () => {
-    if (!todayNotes.trim() && todayTasks.length === 0) return;
+    if (!localTodayNotes.trim() && localTodayTasks.length === 0) return;
     
-    const today = new Date();
-    const dateStr = today.toLocaleDateString('en-GB', { 
-      weekday: 'long', 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    });
+    const result = await manualSaveToIndexMutation({});
     
-    // Format tasks as part of the body
-    const tasksText = todayTasks.length > 0 
-      ? `**Tasks:**\n${todayTasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
-      : '';
-    
-    const body = tasksText + (todayNotes || '');
-    const noteCount = notesData?.length || 0;
-    
-    await createNoteMutation({
-      title: dateStr,
-      body,
-      color: '#B8B8B8',
-      tags: ['journey'],
-      order: noteCount + 1,
-    });
-    
-    // Clear the daily note and tasks from state AND localStorage
-    setTodayNotes('');
-    setTodayTasks([]);
-    localStorage.removeItem(TODAY_NOTES_KEY);
-    localStorage.removeItem(TODAY_TASKS_KEY);
-    // Keep date so we know notes were saved today
-    
-    setDailySaved(true);
-    
-    // Reset saved status after a moment
-    setTimeout(() => setDailySaved(false), 3000);
+    if (result.saved) {
+      // Clear local state
+      setLocalTodayNotes('');
+      setLocalTodayTasks([]);
+      setDailySaved(true);
+      
+      // Reset saved status after a moment
+      setTimeout(() => setDailySaved(false), 3000);
+    }
   };
   
-  // Auto-save daily note at 11pm, then AI processes at 11:30pm
+  // Cleanup debounce timers on unmount
   useEffect(() => {
-    const checkAutoSave = async () => {
-      const now = new Date();
-      
-      // At 11:00pm - save the daily note first
-      if (now.getHours() === 23 && now.getMinutes() === 0) {
-        if ((todayNotes.trim() || todayTasks.length > 0) && !dailySaved) {
-          saveDailyToIndex();
-        }
-      }
-      
-      // At 11:30pm - AI processes the daily note to extract important content
-      if (now.getHours() === 23 && now.getMinutes() === 30) {
-        if ((todayNotes.trim() || todayTasks.length > 0) && !dailySaved) {
-          try {
-            const result = await processDailyNotesAction({
-              dailyContent: todayNotes,
-              dailyTasks: todayTasks,
-            });
-            console.log('Daily notes processed:', result);
-            
-            // Clear after AI processing
-            if (result.processed) {
-              setTodayNotes('');
-              setTodayTasks([]);
-              localStorage.removeItem(TODAY_NOTES_KEY);
-              localStorage.removeItem(TODAY_TASKS_KEY);
-            }
-          } catch (error) {
-            console.error('Failed to process daily notes:', error);
-          }
-        }
-      }
+    return () => {
+      if (todayNotesDebounceRef.current) clearTimeout(todayNotesDebounceRef.current);
+      if (todayTasksDebounceRef.current) clearTimeout(todayTasksDebounceRef.current);
     };
-    
-    // Check every minute
-    const interval = setInterval(checkAutoSave, 60000);
-    return () => clearInterval(interval);
-  }, [todayNotes, todayTasks, dailySaved, processDailyNotesAction]);
+  }, []);
   
   // Handle multiple file selection
   const handleFilesSelected = (files: FileList | null) => {
@@ -988,7 +867,7 @@ export default function Home() {
                     <div className="space-y-4">
                       <div>
                         <p className="text-[12px] text-black/50 uppercase mb-2">Tasks</p>
-                        {todayTasks.map((task, idx) => (
+                        {localTodayTasks.map((task, idx) => (
                           <div key={idx} className="flex items-center gap-2 py-1">
                             <button onClick={() => toggleTask(idx)} className="text-[14px] text-black/50">
                               [{task.completed ? '✓' : ' '}]
@@ -1014,8 +893,8 @@ export default function Home() {
                       <div>
                         <p className="text-[12px] text-black/50 uppercase mb-2">Notes</p>
                         <textarea
-                          value={todayNotes}
-                          onChange={(e) => setTodayNotes(e.target.value)}
+                          value={localTodayNotes}
+                          onChange={(e) => handleTodayNotesChange(e.target.value)}
                           placeholder="Capture your thoughts..."
                           className="w-full text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30 overflow-y-auto"
                           style={{ height: 'calc(100vh - 420px)' }}
@@ -2003,7 +1882,7 @@ export default function Home() {
                   
                   {/* Task list */}
                   <div className="space-y-2 mb-4">
-                    {todayTasks.map((task, idx) => (
+                    {localTodayTasks.map((task, idx) => (
                       <div 
                         key={idx} 
                         className="flex items-center gap-3 group"
@@ -2042,8 +1921,8 @@ export default function Home() {
                 <div>
                   <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Notes</p>
                   <textarea
-                    value={todayNotes}
-                    onChange={(e) => setTodayNotes(e.target.value)}
+                    value={localTodayNotes}
+                    onChange={(e) => handleTodayNotesChange(e.target.value)}
                     placeholder="Capture your thoughts..."
                     className="w-full text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed overflow-y-auto"
                     style={{ height: 'calc(100vh - 400px)' }}
@@ -2054,11 +1933,11 @@ export default function Home() {
               {/* Save to Index section - fixed at bottom */}
               <div className="pt-3 border-t border-black/10 flex items-center justify-between mt-auto">
                 <p className="text-[11px] text-black/30">
-                  auto-saves at 11pm
+                  auto-saves at 11:45pm
                 </p>
                 <button
                   onClick={saveDailyToIndex}
-                  disabled={!todayNotes.trim() && todayTasks.length === 0}
+                  disabled={!localTodayNotes.trim() && localTodayTasks.length === 0}
                   className="text-[11px] text-black/50 hover:text-black transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {dailySaved ? '✓ saved' : 'save to index →'}
