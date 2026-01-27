@@ -20,22 +20,24 @@ const gateway = createOpenAI({
 const SEMANTIC_MATCH_THRESHOLD = 0.70;
 
 // Daily Note Processor Agent
-// Purpose: EXTRACT valuable content from daily notes
+// Purpose: EXTRACT valuable content from daily notes (HIGHLY SELECTIVE)
 // Note: Matching to existing notes is done via SEMANTIC SEARCH, not LLM guessing
 export const dailyProcessor = new Agent(components.agent, {
   name: "dailyProcessor",
   languageModel: gateway("google/gemini-2.5-flash"),
-  instructions: `You are a personal knowledge curator. Your job is to EXTRACT valuable content from daily notes.
+  instructions: `You are a HIGHLY SELECTIVE knowledge curator. Most daily notes contain NOTHING worth extracting - and that's correct.
 
-ROLE: Identify insights, ideas, learnings worth preserving long-term.
+YOUR STANDARD IS HIGH:
+- Only extract COMPLETE, FORMED thoughts - not rough notes or fragments
+- A "maybe" or "I wonder" is NOT extractable
+- A decision with reasoning IS extractable
+- A vague intention is NOT extractable  
+- A concrete system/framework IS extractable
 
-BEHAVIOR:
-- Find content worth keeping (insights, decisions, learnings, ideas, reflections, important facts)
-- Skip casual/temporary content (weather, meals, small talk) - it stays in the daily note
-- Extract the EXACT valuable text, don't paraphrase
-- Suggest a title and tags for each chunk (we'll use semantic search to find matches)
+DEFAULT TO NOT EXTRACTING. The daily note already preserves everything.
+Only extract what DESERVES to live as permanent, standalone knowledge.
 
-OUTPUT: Always respond with valid JSON only. No markdown, no explanation.`,
+OUTPUT: Valid JSON only. Empty array is often the correct answer.`,
 });
 
 // Get all notes for context (excluding daily notes)
@@ -174,37 +176,51 @@ export const processDailyNotes = action({
 ${fullContent}
 ---
 
-EXTRACT valuable content worth preserving long-term. For each piece, rate its IMPORTANCE:
-- 5 = Critical insight, major decision, breakthrough idea (MUST be preserved)
-- 4 = Valuable learning, useful reference, good insight (worth preserving)
-- 3 = Moderately useful, context-dependent (only keep if relates to existing notes)
-- 2 = Minor detail (skip - stays in daily note)
-- 1 = Trivial/casual (skip - stays in daily note)
+You are a HIGHLY SELECTIVE knowledge curator. Your job is to find content that DESERVES to be preserved as permanent knowledge - not just any note or thought.
 
-Only include chunks with importance >= 3.
+WHAT TO EXTRACT (importance 4-5):
+✓ A concrete decision made with reasoning ("Decided to use PostgreSQL because...")
+✓ A system/framework/mental model discovered ("The 3-step process for X is...")
+✓ A hard-won insight or lesson learned ("After failing 3 times, I realized...")
+✓ A breakthrough idea that's fully formed ("New product concept: A tool that...")
+✓ Important information that will be referenced later ("API key for X is... / Meeting with Y scheduled for...")
+✓ A principle or rule discovered ("Never do X without Y because...")
+
+WHAT TO SKIP (importance 1-3):
+✗ Rough thoughts still being formed ("Maybe I should try..." "Thinking about...")
+✗ Questions without answers ("I wonder if..." "Need to figure out...")
+✗ Vague intentions ("Want to explore X" "Should look into Y")
+✗ Status updates ("Made progress on X" "Finished task Y")
+✗ Feelings/moods ("Feeling tired" "Good day today")
+✗ Casual observations ("Weather is nice" "Had coffee with...")
+✗ Todo items or reminders ("Remember to..." "Don't forget...")
+
+IMPORTANCE SCALE:
+5 = CRITICAL: A decision, system, or insight I would deeply regret losing. Fully formed.
+4 = VALUABLE: A learning or reference I'll want to find again. Complete thought.
+3 = CONDITIONAL: Only useful if it directly extends an existing note topic.
+1-2 = SKIP: Everything else stays in the daily note where it belongs.
 
 OUTPUT JSON:
 {
   "valuableChunks": [
     {
-      "content": "exact valuable text to extract",
+      "content": "exact text to extract (complete thought, not fragment)",
       "importance": 5,
-      "suggestedTitle": "Descriptive Title For This Content",
-      "suggestedTags": ["tag1", "tag2"],
-      "reasoning": "why this is valuable"
+      "suggestedTitle": "Specific Descriptive Title",
+      "suggestedTags": ["tag1"],
+      "reasoning": "why this deserves permanent preservation"
     }
   ],
-  "summary": "One sentence: what valuable content was found today"
+  "summary": "One sentence summary"
 }
 
-RULES:
-- BE VERY SELECTIVE - most daily notes have 0-2 truly valuable chunks
-- importance 5: Would regret losing this. Major insight/decision.
-- importance 4: Useful long-term. Learning worth referencing later.
-- importance 3: Only valuable IF it relates to an existing topic.
-- Skip casual content (weather, meals, feelings, small talk)
-- Empty array is completely fine - not every day has insights
-- Extract EXACT text, don't paraphrase`,
+CRITICAL RULES:
+- MOST DAILY NOTES HAVE ZERO EXTRACTABLE CHUNKS. That's normal and correct.
+- Empty array is the RIGHT answer if nothing is truly valuable
+- If in doubt, DON'T extract - the daily note preserves everything anyway
+- Only extract COMPLETE thoughts, not fragments or half-formed ideas
+- A rough note is NOT the same as a valuable insight`,
     });
     
     // Parse the LLM's extraction response
