@@ -152,8 +152,8 @@ export default function Home() {
     setIsAuthenticating(true);
     
     try {
-      // Get authentication options from server
-      const optionsResponse = await getAuthenticationOptions();
+      // Get authentication options from server (pass origin for domain matching)
+      const optionsResponse = await getAuthenticationOptions({ origin: window.location.origin });
       if ('error' in optionsResponse && optionsResponse.error) {
         setAuthError(optionsResponse.error);
         setIsAuthenticating(false);
@@ -169,8 +169,11 @@ export default function Home() {
       // Trigger biometric prompt
       const authResponse = await startAuthentication({ optionsJSON: optionsResponse.options });
       
-      // Verify with server
-      const verification = await verifyAuthentication({ response: authResponse });
+      // Verify with server (pass origin for domain matching)
+      const verification = await verifyAuthentication({ 
+        response: authResponse,
+        origin: window.location.origin,
+      });
       
       if (verification.success && verification.sessionToken) {
         // Store session token
@@ -207,16 +210,17 @@ export default function Home() {
       else if (/Android/.test(userAgent)) deviceName = 'Android';
       else if (/Windows/.test(userAgent)) deviceName = 'Windows PC';
       
-      // Get registration options from server
-      const { options } = await getRegistrationOptions({ deviceName });
+      // Get registration options from server (pass origin for domain matching)
+      const { options } = await getRegistrationOptions({ deviceName, origin: window.location.origin });
       
       // Trigger biometric enrollment
       const regResponse = await startRegistration({ optionsJSON: options });
       
-      // Verify and store with server
+      // Verify and store with server (pass origin for domain matching)
       const verification = await verifyRegistration({ 
         response: regResponse, 
-        deviceName 
+        deviceName,
+        origin: window.location.origin 
       });
       
       if (verification.success && verification.sessionToken) {

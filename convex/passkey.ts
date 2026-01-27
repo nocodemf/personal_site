@@ -242,14 +242,22 @@ export const removeDevice = mutation({
 
 // Generate registration options for a new device
 export const getRegistrationOptions = action({
-  args: { deviceName: v.string() },
+  args: { 
+    deviceName: v.string(),
+    origin: v.optional(v.string()), // Pass origin from client
+  },
   handler: async (ctx, args) => {
+    // Use client-provided origin or fall back to env var
+    const rpId = args.origin ? new URL(args.origin).hostname : RP_ID;
+    
+    console.log("Generating registration options for RP_ID:", rpId);
+    
     // Get existing passkeys to exclude
     const existingPasskeys = await ctx.runQuery(internal.passkey.getAllPasskeysInternal, {});
     
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
-      rpID: RP_ID,
+      rpID: rpId,
       userName: "urav", // Single user
       userDisplayName: "Urav",
       attestationType: "none",
@@ -279,15 +287,32 @@ export const verifyRegistration = action({
   args: {
     response: v.any(), // RegistrationResponseJSON
     deviceName: v.string(),
+    origin: v.optional(v.string()), // Pass origin from client for flexibility
   },
   handler: async (ctx, args): Promise<{ success: boolean; sessionToken?: string; error?: string }> => {
     const response = args.response as RegistrationResponseJSON;
     
+    // Use client-provided origin or fall back to env var
+    const expectedOrigin = args.origin || ORIGIN;
+    const expectedRpId = args.origin ? new URL(args.origin).hostname : RP_ID;
+    
+    console.log("Registration attempt - RP_ID:", expectedRpId, "Origin:", expectedOrigin);
+    
     // Verify the challenge was valid
+    let challengeFromClient = "";
+    try {
+      const clientDataJSON = response.response.clientDataJSON;
+      // Proper base64url to base64 conversion
+      const base64 = clientDataJSON.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+      challengeFromClient = JSON.parse(atob(padded)).challenge;
+    } catch (e) {
+      console.error("Failed to parse clientDataJSON:", e);
+      return { success: false, error: "Invalid client data" };
+    }
+    
     const challengeResult = await ctx.runMutation(internal.passkey.consumeChallengeInternal, {
-      challenge: response.response.clientDataJSON 
-        ? JSON.parse(atob(response.response.clientDataJSON.replace(/-/g, '+').replace(/_/g, '/'))).challenge
-        : "",
+      challenge: challengeFromClient,
       type: "registration",
     });
     
@@ -299,12 +324,13 @@ export const verifyRegistration = action({
       const verification = await verifyRegistrationResponse({
         response,
         expectedChallenge: () => true, // We already validated via consumeChallenge
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
+        expectedOrigin: expectedOrigin,
+        expectedRPID: expectedRpId,
       });
       
       if (!verification.verified || !verification.registrationInfo) {
-        return { success: false, error: "Verification failed" };
+        console.error("Verification not verified or no registrationInfo");
+        return { success: false, error: "Verification failed - credential not verified" };
       }
       
       const { credential } = verification.registrationInfo;
@@ -324,17 +350,25 @@ export const verifyRegistration = action({
       });
       
       return { success: true, sessionToken: sessionResult.token };
-    } catch (error) {
-      console.error("Registration verification error:", error);
-      return { success: false, error: "Verification failed" };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Registration verification error:", errorMessage);
+      return { success: false, error: `Verification failed: ${errorMessage}` };
     }
   },
 });
 
 // Generate authentication options
 export const getAuthenticationOptions = action({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    origin: v.optional(v.string()), // Pass origin from client
+  },
+  handler: async (ctx, args) => {
+    // Use client-provided origin or fall back to env var
+    const rpId = args.origin ? new URL(args.origin).hostname : RP_ID;
+    
+    console.log("Generating auth options for RP_ID:", rpId);
+    
     // Get existing passkeys
     const passkeys = await ctx.runQuery(internal.passkey.getAllPasskeysInternal, {});
     
@@ -343,7 +377,7 @@ export const getAuthenticationOptions = action({
     }
     
     const options = await generateAuthenticationOptions({
-      rpID: RP_ID,
+      rpID: rpId,
       allowCredentials: passkeys.map((p: { credentialId: string; transports?: string[] }) => ({
         id: p.credentialId,
         transports: p.transports as AuthenticatorTransport[] | undefined,
@@ -365,9 +399,16 @@ export const getAuthenticationOptions = action({
 export const verifyAuthentication = action({
   args: {
     response: v.any(), // AuthenticationResponseJSON
+    origin: v.optional(v.string()), // Pass origin from client for flexibility
   },
   handler: async (ctx, args): Promise<{ success: boolean; sessionToken?: string; error?: string }> => {
     const response = args.response as AuthenticationResponseJSON;
+    
+    // Use client-provided origin or fall back to env var
+    const expectedOrigin = args.origin || ORIGIN;
+    const expectedRpId = args.origin ? new URL(args.origin).hostname : RP_ID;
+    
+    console.log("Auth attempt - RP_ID:", expectedRpId, "Origin:", expectedOrigin);
     
     // Get the passkey for this credential
     const passkeyData = await ctx.runQuery(internal.passkey.getPasskeyByCredentialIdInternal, {
@@ -379,10 +420,19 @@ export const verifyAuthentication = action({
     }
     
     // Verify the challenge was valid
+    let challengeFromClient = "";
+    try {
+      const clientDataJSON = response.response.clientDataJSON;
+      const base64 = clientDataJSON.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+      challengeFromClient = JSON.parse(atob(padded)).challenge;
+    } catch (e) {
+      console.error("Failed to parse clientDataJSON:", e);
+      return { success: false, error: "Invalid client data" };
+    }
+    
     const challengeResult = await ctx.runMutation(internal.passkey.consumeChallengeInternal, {
-      challenge: response.response.clientDataJSON
-        ? JSON.parse(atob(response.response.clientDataJSON.replace(/-/g, '+').replace(/_/g, '/'))).challenge
-        : "",
+      challenge: challengeFromClient,
       type: "authentication",
     });
     
@@ -394,8 +444,8 @@ export const verifyAuthentication = action({
       const verification = await verifyAuthenticationResponse({
         response,
         expectedChallenge: () => true, // We already validated via consumeChallenge
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
+        expectedOrigin: expectedOrigin,
+        expectedRPID: expectedRpId,
         credential: {
           id: passkeyData.credentialId,
           publicKey: Buffer.from(passkeyData.publicKey, "base64url"),
@@ -419,9 +469,10 @@ export const verifyAuthentication = action({
       });
       
       return { success: true, sessionToken: sessionResult.token };
-    } catch (error) {
-      console.error("Authentication verification error:", error);
-      return { success: false, error: "Verification failed" };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Authentication verification error:", errorMessage);
+      return { success: false, error: `Verification failed: ${errorMessage}` };
     }
   },
 });
