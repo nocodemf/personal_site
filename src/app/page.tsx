@@ -691,72 +691,144 @@ export default function Home() {
     }
   };
 
-  // Handle image upload - uploads all files
+  // Compress and resize image to reduce storage usage
+  const compressImage = async (file: File, maxDimension = 2000, quality = 0.85): Promise<{ blob: Blob; width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl); // Clean up immediately
+        
+        let { width, height } = img;
+        
+        // Scale down if larger than maxDimension
+        if (width > maxDimension || height > maxDimension) {
+          const ratio = Math.min(maxDimension / width, maxDimension / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        
+        // Draw to canvas and compress
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve({ blob, width, height });
+            } else {
+              reject(new Error('Failed to compress image'));
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = objectUrl;
+    });
+  };
+
+  // Handle image upload - with compression, batching, and error resilience
   const handleImageUpload = async () => {
     if (selectedFiles.length === 0) return;
     
     setUploadStatus('uploading');
     setUploadProgress({ current: 0, total: selectedFiles.length });
     
-    try {
-      for (let i = 0; i < selectedFiles.length; i++) {
+    let successCount = 0;
+    const failedFiles: string[] = [];
+    const BATCH_SIZE = 10;
+    
+    // Process in batches to avoid memory issues
+    for (let batchStart = 0; batchStart < selectedFiles.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, selectedFiles.length);
+      
+      for (let i = batchStart; i < batchEnd; i++) {
         const file = selectedFiles[i];
         const metadata = fileMetadata[i];
         
         setUploadProgress({ current: i + 1, total: selectedFiles.length });
         
-        // Get upload URL
-        const uploadUrl = await generateUploadUrl();
-        
-        // Upload the file
-        const result = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': file.type },
-          body: file,
-        });
-        
-        const { storageId } = await result.json();
-        
-        // Get image dimensions
-        const img = new Image();
-        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-          img.onload = () => resolve({ width: img.width, height: img.height });
-          img.src = URL.createObjectURL(file);
-        });
-        
-        // Save to database - title is optional now
-        await saveImageMutation({
-          storageId,
-          title: metadata.title.trim() || undefined,
-          description: metadata.description.trim() || undefined,
-          category: uploadCategory,
-          width: dimensions.width,
-          height: dimensions.height,
-        });
+        try {
+          // Compress image (reduces 5MB → ~300KB, saves storage)
+          const { blob, width, height } = await compressImage(file);
+          
+          // Get upload URL
+          const uploadUrl = await generateUploadUrl();
+          
+          // Upload the compressed file
+          const result = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg' },
+            body: blob,
+          });
+          
+          if (!result.ok) throw new Error(`HTTP ${result.status}`);
+          
+          const { storageId } = await result.json();
+          
+          // Save to database
+          await saveImageMutation({
+            storageId,
+            title: metadata.title.trim() || undefined,
+            description: metadata.description.trim() || undefined,
+            category: uploadCategory,
+            width,
+            height,
+          });
+          
+          successCount++;
+          
+          // Small delay between uploads to avoid rate limits
+          await new Promise(r => setTimeout(r, 50));
+          
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          failedFiles.push(file.name);
+          // Continue with next file
+        }
       }
       
-      // Show success
-      setUploadStatus('success');
-      
-      // Reset form after delay
-      setTimeout(() => {
-        setSelectedFiles([]);
-        setFileMetadata([]);
-        setCurrentFileIndex(0);
-        setUploadCategory('design');
-        setIsUploadingImage(false);
-        setUploadStatus('idle');
-        setUploadProgress({ current: 0, total: 0 });
-      }, 1500);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      setUploadStatus('error');
-      
-      // Reset error after delay
-      setTimeout(() => {
-        setUploadStatus('idle');
-      }, 3000);
+      // Pause between batches to let browser breathe
+      if (batchEnd < selectedFiles.length) {
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
+    
+    // Show result
+    if (failedFiles.length === 0) {
+      setUploadStatus('success');
+    } else if (successCount > 0) {
+      console.log(`Uploaded ${successCount}/${selectedFiles.length}. Failed: ${failedFiles.join(', ')}`);
+      setUploadStatus('success'); // Partial success
+    } else {
+      setUploadStatus('error');
+    }
+    
+    // Reset form after delay
+    setTimeout(() => {
+      setSelectedFiles([]);
+      setFileMetadata([]);
+      setCurrentFileIndex(0);
+      setUploadCategory('design');
+      setIsUploadingImage(false);
+      setUploadStatus('idle');
+      setUploadProgress({ current: 0, total: 0 });
+    }, 1500);
   };
   
   // Transform notes for display
