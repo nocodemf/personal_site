@@ -1,5 +1,5 @@
 import { Agent } from "@convex-dev/agent";
-import { components, internal } from "./_generated/api";
+import { components, internal, api } from "./_generated/api";
 import { createOpenAI } from "@ai-sdk/openai";
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery } from "./_generated/server";
@@ -15,22 +15,25 @@ const gateway = createOpenAI({
   apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY,
 });
 
+// Semantic similarity threshold for matching to existing notes
+// 0.70 = reasonably confident match (tested to balance precision/recall)
+const SEMANTIC_MATCH_THRESHOLD = 0.70;
+
 // Daily Note Processor Agent
-// Purpose: Analyze daily notes, extract important content, copy to appropriate notes
-// Note: Original daily note stays intact - we're just copying valuable content out
+// Purpose: EXTRACT valuable content from daily notes
+// Note: Matching to existing notes is done via SEMANTIC SEARCH, not LLM guessing
 export const dailyProcessor = new Agent(components.agent, {
   name: "dailyProcessor",
   languageModel: gateway("google/gemini-2.5-flash"),
-  instructions: `You are a personal knowledge curator. Your job is to find valuable content in daily notes and copy it to the right place.
+  instructions: `You are a personal knowledge curator. Your job is to EXTRACT valuable content from daily notes.
 
-ROLE: Identify insights, ideas, learnings worth preserving. Copy them out.
+ROLE: Identify insights, ideas, learnings worth preserving long-term.
 
 BEHAVIOR:
-- Find content worth keeping long-term (insights, decisions, learnings, ideas, reflections)
-- Skip casual/temporary content - it stays in the daily note, that's fine
-- When matching to existing notes, only match if DIRECTLY related to that note's topic
-- New notes should have clear, specific titles
-- Tags should be lowercase, single words, descriptive
+- Find content worth keeping (insights, decisions, learnings, ideas, reflections, important facts)
+- Skip casual/temporary content (weather, meals, small talk) - it stays in the daily note
+- Extract the EXACT valuable text, don't paraphrase
+- Suggest a title and tags for each chunk (we'll use semantic search to find matches)
 
 OUTPUT: Always respond with valid JSON only. No markdown, no explanation.`,
 });
@@ -121,7 +124,7 @@ export const createExtractedNote = internalMutation({
   },
 });
 
-// Main action: Process daily notes using the agent
+// Main action: Process daily notes using the agent + SEMANTIC SEARCH
 export const processDailyNotes = action({
   args: {
     dailyContent: v.string(),
@@ -137,6 +140,7 @@ export const processDailyNotes = action({
       type: 'append' | 'create';
       title?: string;
       noteId?: string;
+      semanticScore?: number;
     }>;
   }> => {
     const { dailyContent, dailyTasks } = args;
@@ -155,139 +159,163 @@ export const processDailyNotes = action({
       };
     }
     
-    // Get existing notes for context
-    const existingNotes = await ctx.runQuery(internal.dailyProcessor.getAllNotesContext, {});
+    // ============================================
+    // STEP 1: Use LLM to EXTRACT valuable chunks
+    // (LLM is good at understanding what's valuable)
+    // ============================================
     
-    // Build context string
-    const notesContext = existingNotes.length > 0
-      ? existingNotes.map(n => 
-          `[ID: ${n.id}] "${n.title}" - Tags: ${n.tags.join(', ')} - ${n.aiSummary || n.body.substring(0, 150)}`
-        ).join('\n')
-      : "No existing notes.";
-    
-    // Create a thread for the agent
     const { threadId } = await dailyProcessor.createThread(ctx, {});
     
-    // First message: Provide context about existing notes
-    await dailyProcessor.generateText(ctx, { threadId }, {
-      prompt: `EXISTING NOTES IN MY KNOWLEDGE BASE:\n${notesContext}\n\nRemember these for matching.`,
-    });
-    
-    // Second message: Analyze the daily content
-    const analysisResult = await dailyProcessor.generateText(ctx, { threadId }, {
+    const extractionResult = await dailyProcessor.generateText(ctx, { threadId }, {
       prompt: `DAILY NOTE TO PROCESS:
 ---
 ${fullContent}
 ---
 
-Find valuable content worth preserving long-term. For each valuable chunk, decide:
-- Should it be APPENDED to an existing note? (use exact ID)
-- Should it become a NEW note?
+EXTRACT valuable content worth preserving long-term. For each piece of valuable content, provide:
+- The exact text to extract
+- A suggested title (if it were to become its own note)
+- Suggested tags (lowercase, single word)
 
-Skip casual/temporary content - it's fine staying in the daily note.
+Skip casual/temporary content (weather, meals, small talk).
 
 OUTPUT JSON:
 {
   "valuableChunks": [
     {
-      "content": "exact text to copy",
-      "action": "append" | "create",
-      "existingNoteId": "exact_id_if_append" | null,
-      "newNoteTitle": "title_if_create" | null,
-      "newNoteTags": ["tag1"] | []
+      "content": "exact valuable text to extract",
+      "suggestedTitle": "Descriptive Title For This Content",
+      "suggestedTags": ["tag1", "tag2"]
     }
   ],
-  "summary": "One sentence: what valuable content was extracted today"
+  "summary": "One sentence: what valuable content was found today"
 }
 
 RULES:
-- Only include chunks worth preserving long-term
-- Append only if chunk DIRECTLY relates to existing note's topic
-- New note titles should be specific and descriptive
-- Tags: lowercase, single word
-- Empty array is fine if nothing valuable`,
+- Only include content worth preserving LONG-TERM
+- Extract the EXACT text, don't paraphrase
+- Titles should be specific and descriptive
+- Tags: lowercase, single word, descriptive
+- Empty array is fine if nothing valuable
+- Be SELECTIVE - quality over quantity`,
     });
     
-    // Parse the agent's response
+    // Parse the LLM's extraction response
     let parsed: {
       valuableChunks: Array<{
         content: string;
-        action: string;
-        existingNoteId: string | null;
-        newNoteTitle: string | null;
-        newNoteTags: string[];
+        suggestedTitle: string;
+        suggestedTags: string[];
       }>;
       summary: string;
     };
     
     try {
-      const jsonMatch = analysisResult.text.match(/\{[\s\S]*\}/);
+      const jsonMatch = extractionResult.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsed = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error("No JSON found");
+        throw new Error("No JSON found in LLM response");
       }
     } catch (e) {
-      console.error("Failed to parse agent response:", e);
+      console.error("Failed to parse LLM extraction response:", e);
       return { 
         processed: false, 
-        summary: "Failed to analyze content",
+        summary: "Failed to extract content",
         actions: [] 
       };
     }
+    
+    if (!parsed.valuableChunks || parsed.valuableChunks.length === 0) {
+      return {
+        processed: true,
+        summary: parsed.summary || "No valuable content found to extract",
+        actions: [],
+      };
+    }
+    
+    console.log(`LLM extracted ${parsed.valuableChunks.length} valuable chunks`);
+    
+    // ============================================
+    // STEP 2: Use SEMANTIC SEARCH to find matches
+    // (Vector similarity is better than LLM guessing)
+    // ============================================
     
     const actions: Array<{
       type: 'append' | 'create';
       title?: string;
       noteId?: string;
+      semanticScore?: number;
     }> = [];
     
-    // Process each valuable chunk
-    for (const chunk of parsed.valuableChunks || []) {
-      if (chunk.action === 'append' && chunk.existingNoteId) {
-        // Validate note exists
-        const noteExists = existingNotes.some(n => n.id === chunk.existingNoteId);
+    for (const chunk of parsed.valuableChunks) {
+      console.log(`Processing chunk: "${chunk.content.substring(0, 50)}..."`);
+      
+      // Run semantic search to find the best matching existing note
+      const semanticMatches = await ctx.runAction(api.embeddings.semanticSearch, {
+        query: chunk.content,
+        limit: 3, // Get top 3 matches
+      });
+      
+      // Filter out daily/journey notes from matches (we don't want to append to those)
+      const validMatches = semanticMatches.filter(
+        (match: { tags: string[]; score: number }) => 
+          !match.tags.includes('journey') && !match.tags.includes('daily')
+      );
+      
+      const bestMatch = validMatches[0];
+      
+      if (bestMatch && bestMatch.score >= SEMANTIC_MATCH_THRESHOLD) {
+        // ============================================
+        // HIGH CONFIDENCE MATCH: Append to existing note
+        // ============================================
+        console.log(`  → Semantic match found: "${bestMatch.title}" (score: ${bestMatch.score.toFixed(3)})`);
         
-        if (noteExists) {
-          const result = await ctx.runMutation(internal.dailyProcessor.appendToExistingNote, {
-            noteId: chunk.existingNoteId as Id<"notes">,
-            content: chunk.content,
-          });
-          actions.push({ 
-            type: 'append', 
-            title: result.noteTitle,
-            noteId: chunk.existingNoteId 
-          });
-        } else {
-          // Fallback: create new note if ID invalid
-          const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
-            title: chunk.newNoteTitle || "Extracted Insight",
-            body: chunk.content,
-            tags: chunk.newNoteTags || [],
-          });
-          actions.push({ 
-            type: 'create', 
-            title: result.title,
-            noteId: result.noteId 
-          });
-        }
-      } else if (chunk.action === 'create') {
-        const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
-          title: chunk.newNoteTitle || "Extracted Insight",
-          body: chunk.content,
-          tags: chunk.newNoteTags || [],
+        const result = await ctx.runMutation(internal.dailyProcessor.appendToExistingNote, {
+          noteId: bestMatch._id,
+          content: chunk.content,
         });
+        
+        actions.push({ 
+          type: 'append', 
+          title: result.noteTitle,
+          noteId: bestMatch._id,
+          semanticScore: bestMatch.score,
+        });
+      } else {
+        // ============================================
+        // NO GOOD MATCH: Create new note
+        // ============================================
+        const scoreInfo = bestMatch 
+          ? `best match "${bestMatch.title}" scored ${bestMatch.score.toFixed(3)} < ${SEMANTIC_MATCH_THRESHOLD}` 
+          : 'no matches found';
+        console.log(`  → Creating new note (${scoreInfo})`);
+        
+        const result = await ctx.runMutation(internal.dailyProcessor.createExtractedNote, {
+          title: chunk.suggestedTitle || "Extracted Insight",
+          body: chunk.content,
+          tags: chunk.suggestedTags || [],
+        });
+        
         actions.push({ 
           type: 'create', 
           title: result.title,
-          noteId: result.noteId 
+          noteId: result.noteId,
+          semanticScore: bestMatch?.score,
         });
       }
     }
     
+    // Build summary
+    const appendCount = actions.filter(a => a.type === 'append').length;
+    const createCount = actions.filter(a => a.type === 'create').length;
+    const actionSummary = [];
+    if (appendCount > 0) actionSummary.push(`${appendCount} appended to existing notes`);
+    if (createCount > 0) actionSummary.push(`${createCount} new notes created`);
+    
     return {
       processed: true,
-      summary: parsed.summary || (actions.length > 0 ? "Extracted valuable content" : "No valuable content found"),
+      summary: `${parsed.summary}. ${actionSummary.join(', ') || 'No actions taken'}.`,
       actions,
     };
   },
