@@ -34,6 +34,9 @@ const WALK_FRAME_MS = 50;
 const WALK_SPEED = 8;
 const REAPPEAR_DELAY = 0;
 
+// Minimum walk distance before exit can be triggered (prevents premature exit)
+const MIN_WALK_DISTANCE = 200;
+
 // Top padding to prevent clipping during body bob
 const TOP_PADDING = 5;
 
@@ -65,6 +68,12 @@ export const PixelCharacter: React.FC<PixelCharacterProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [phase, setPhase] = useState<AnimationPhase>(startPhase);
   const [walkOffset, setWalkOffset] = useState(startOffset);
+  
+  // Refs to prevent animation restarts and track state
+  const walkingStartedRef = useRef(false);
+  const enteringStartedRef = useRef(false);
+  const exitThresholdRef = useRef<number | null>(null);
+  const enteringOffsetRef = useRef(startOffset); // Track starting offset for entering_left
   
   const gridWidth = CHARACTER[0]?.length || 54;
   const gridHeight = CHARACTER.length;
@@ -211,42 +220,55 @@ export const PixelCharacter: React.FC<PixelCharacterProps> = ({
   useEffect(() => {
     if (phase !== 'walking_right') return;
     
+    // Prevent animation restart if already running
+    if (walkingStartedRef.current) return;
+    walkingStartedRef.current = true;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
+    // Calculate exit threshold once at start (not inside interval)
+    // Fallback to a reasonable default if window isn't ready
+    const screenWidth = typeof window !== 'undefined' && window.innerWidth > 0 
+      ? window.innerWidth 
+      : 1920;
+    exitThresholdRef.current = (screenWidth / 2) + (gridWidth * pixelSize) + 50;
+    
     let frameIndex = 0;
-    setWalkOffset(0);
+    let currentOffset = 0;
     
     const walkInterval = setInterval(() => {
       frameIndex = (frameIndex + 1) % WALK_CYCLE.length;
       drawWalkFrame(ctx, frameIndex);
       
-      setWalkOffset(prev => {
-        const newOffset = prev + walkSpeed;
-        
-        // Exit when character is fully off the right edge of the screen
-        // Account for screen width (character starts centered, needs to travel half screen + character width)
-        const exitThreshold = typeof window !== 'undefined' ? (window.innerWidth / 2) + (gridWidth * pixelSize) + 50 : 1000;
-        
-        if (newOffset > exitThreshold) {
-          clearInterval(walkInterval);
-          setPhase('exited_right');
-        }
-        
-        return newOffset;
-      });
+      currentOffset += walkSpeed;
+      setWalkOffset(currentOffset);
+      
+      // Only exit after minimum distance AND past threshold
+      const threshold = exitThresholdRef.current || 1000;
+      if (currentOffset > MIN_WALK_DISTANCE && currentOffset > threshold) {
+        clearInterval(walkInterval);
+        setPhase('exited_right');
+      }
     }, walkFrameMs);
     
     drawWalkFrame(ctx, 0);
     
-    return () => clearInterval(walkInterval);
-  }, [phase, drawWalkFrame, walkSpeed, walkFrameMs]);
+    return () => {
+      clearInterval(walkInterval);
+    };
+  }, [phase, drawWalkFrame, walkSpeed, walkFrameMs, gridWidth, pixelSize]);
   
   // After exiting right, trigger reappearance from left
   useEffect(() => {
     if (phase !== 'exited_right') return;
+    
+    // Reset flags for next animation cycle
+    walkingStartedRef.current = false;
+    enteringStartedRef.current = false;
+    enteringOffsetRef.current = -200; // Set entering offset for cycle
     
     const timer = setTimeout(() => {
       setWalkOffset(-200); // Start off-screen to the left
@@ -260,29 +282,31 @@ export const PixelCharacter: React.FC<PixelCharacterProps> = ({
   useEffect(() => {
     if (phase !== 'entering_left') return;
     
+    // Prevent animation restart if already running
+    if (enteringStartedRef.current) return;
+    enteringStartedRef.current = true;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
     let frameIndex = 0;
+    let currentOffset = enteringOffsetRef.current; // Start from specified offset
     
     const walkInterval = setInterval(() => {
       frameIndex = (frameIndex + 1) % WALK_CYCLE.length;
       drawWalkFrame(ctx, frameIndex);
       
-      setWalkOffset(prev => {
-        const newOffset = prev + walkSpeed;
-        
-        // Stop at center position (0)
-        if (newOffset >= 0) {
-          clearInterval(walkInterval);
-          setWalkOffset(0);
-          setPhase('settled');
-        }
-        
-        return newOffset;
-      });
+      currentOffset += walkSpeed;
+      setWalkOffset(currentOffset);
+      
+      // Stop at center position (0)
+      if (currentOffset >= 0) {
+        clearInterval(walkInterval);
+        setWalkOffset(0);
+        setPhase('settled');
+      }
     }, walkFrameMs);
     
     drawWalkFrame(ctx, 0);

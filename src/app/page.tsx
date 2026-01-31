@@ -120,7 +120,14 @@ export default function Home() {
   );
   
   // Check session on mount (passkey session first, then legacy session)
+  // Only auto-login if still on password stage - don't interrupt animation!
   useEffect(() => {
+    // Skip if animation is already in progress
+    if (stage !== 'password') {
+      setIsHydrated(true);
+      return;
+    }
+    
     // Check passkey session from localStorage
     const passkeyToken = localStorage.getItem(PASSKEY_SESSION_KEY);
     if (passkeyToken && validateSession?.valid) {
@@ -137,7 +144,7 @@ export default function Home() {
       setShowAbout(true);
     }
     setIsHydrated(true);
-  }, [validateSession]);
+  }, [validateSession, stage]);
   
   // Save session when authenticated
   useEffect(() => {
