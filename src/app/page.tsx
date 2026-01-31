@@ -904,8 +904,9 @@ export default function Home() {
     if (phase === 'exited_right' && stage === 'first') {
       setStage('transitioning');
     }
-    // When second character settles, show the about text
-    if (phase === 'settled' && stage === 'second') {
+    // When second character starts entering, show the UI immediately
+    // (UI fades in while character is still walking to position)
+    if (phase === 'entering_left' && stage === 'second') {
       setShowAbout(true);
     }
   }, [stage]);

@@ -249,9 +249,9 @@ export const PixelCharacter: React.FC<PixelCharacterProps> = ({
       // Only exit after minimum distance AND past threshold
       const threshold = exitThresholdRef.current || 1000;
       if (currentOffset > MIN_WALK_DISTANCE && currentOffset > threshold) {
-        clearInterval(walkInterval);
-        setPhase('exited_right');
-      }
+          clearInterval(walkInterval);
+          setPhase('exited_right');
+        }
     }, walkFrameMs);
     
     drawWalkFrame(ctx, 0);
@@ -300,13 +300,13 @@ export const PixelCharacter: React.FC<PixelCharacterProps> = ({
       
       currentOffset += walkSpeed;
       setWalkOffset(currentOffset);
-      
-      // Stop at center position (0)
+        
+        // Stop at center position (0)
       if (currentOffset >= 0) {
-        clearInterval(walkInterval);
-        setWalkOffset(0);
-        setPhase('settled');
-      }
+          clearInterval(walkInterval);
+          setWalkOffset(0);
+          setPhase('settled');
+        }
     }, walkFrameMs);
     
     drawWalkFrame(ctx, 0);
