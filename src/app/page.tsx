@@ -1121,49 +1121,46 @@ export default function Home() {
               )}
               
               {indexFilter === 'today' && (
-                <div className="flex-1 overflow-y-auto px-4 pb-4">
+                <div className="flex-1 flex flex-col px-4 pb-4 min-h-0">
                   {/* Today view for mobile */}
-                  <div className="pt-4">
+                  <div className="pt-4 flex-shrink-0">
                     <p className="text-[18px] font-medium text-black mb-6">
                       {currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </p>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-[12px] text-black/50 uppercase mb-2">Tasks</p>
-                        {localTodayTasks.map((task, idx) => (
-                          <div key={idx} className="flex items-center gap-2 py-1">
-                            <button onClick={() => toggleTask(idx)} className="text-[14px] text-black/50">
-                              [{task.completed ? '✓' : ' '}]
-                            </button>
-                            <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
-                              {task.text}
-                            </span>
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[14px] text-black/30">[+]</span>
-                          <input
-                            type="text"
-                            value={newTask}
-                            onChange={(e) => setNewTask(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                            placeholder="Add task..."
-                            className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
-                          />
+                    <div>
+                      <p className="text-[12px] text-black/50 uppercase mb-2">Tasks</p>
+                      {localTodayTasks.map((task, idx) => (
+                        <div key={idx} className="flex items-center gap-2 py-1">
+                          <button onClick={() => toggleTask(idx)} className="text-[14px] text-black/50">
+                            [{task.completed ? '✓' : ' '}]
+                          </button>
+                          <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                            {task.text}
+                          </span>
                         </div>
-                      </div>
-                      <div className="h-px bg-black/10" />
-                      <div>
-                        <p className="text-[12px] text-black/50 uppercase mb-2">Notes</p>
-                        <textarea
-                          value={localTodayNotes}
-                          onChange={(e) => handleTodayNotesChange(e.target.value)}
-                          placeholder="Capture your thoughts..."
-                          className="w-full text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30 overflow-y-auto"
-                          style={{ height: 'calc(100vh - 420px)' }}
+                      ))}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[14px] text-black/30">[+]</span>
+                        <input
+                          type="text"
+                          value={newTask}
+                          onChange={(e) => setNewTask(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                          placeholder="Add task..."
+                          className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
                         />
                       </div>
                     </div>
+                  </div>
+                  <div className="h-px bg-black/10 my-4 flex-shrink-0" />
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <p className="text-[12px] text-black/50 uppercase mb-2 flex-shrink-0">Notes</p>
+                    <textarea
+                      value={localTodayNotes}
+                      onChange={(e) => handleTodayNotesChange(e.target.value)}
+                      placeholder="Capture your thoughts..."
+                      className="flex-1 w-full text-[14px] bg-transparent outline-none resize-none placeholder:text-black/30 overflow-y-auto min-h-0"
+                    />
                   </div>
                 </div>
               )}
@@ -2142,65 +2139,61 @@ export default function Home() {
           
           {/* Today view - Daily notepad */}
           {indexFilter === 'today' && (
-            <div className="flex-1 flex flex-col px-8 pt-6 pb-6">
-              {/* Scrollable content area */}
-              <div className="flex-1 overflow-y-auto">
-                {/* Tasks section */}
-                <div className="mb-8">
-                  <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
-                  
-                  {/* Task list */}
-                  <div className="space-y-2 mb-4">
-                    {localTodayTasks.map((task, idx) => (
-                      <div 
-                        key={idx} 
-                        className="flex items-center gap-3 group"
+            <div className="flex-1 flex flex-col px-8 pt-6 pb-6 min-h-0">
+              {/* Tasks section - fixed at top */}
+              <div className="flex-shrink-0 mb-8">
+                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
+                
+                {/* Task list */}
+                <div className="space-y-2 mb-4">
+                  {localTodayTasks.map((task, idx) => (
+                    <div 
+                      key={idx} 
+                      className="flex items-center gap-3 group"
+                    >
+                      <button
+                        onClick={() => toggleTask(idx)}
+                        className="text-[14px] text-black/50 hover:text-black transition-colors"
                       >
-                        <button
-                          onClick={() => toggleTask(idx)}
-                          className="text-[14px] text-black/50 hover:text-black transition-colors"
-                        >
-                          [{task.completed ? '✓' : ' '}]
-                        </button>
-                        <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
-                          {task.text}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Add task input */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-[14px] text-black/30">[+]</span>
-                    <input
-                      type="text"
-                      value={newTask}
-                      onChange={(e) => setNewTask(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                      placeholder="Add a task..."
-                      className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
-                    />
-                  </div>
+                        [{task.completed ? '✓' : ' '}]
+                      </button>
+                      <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                        {task.text}
+                      </span>
+                    </div>
+                  ))}
                 </div>
                 
-                {/* Divider */}
-                <div className="h-px bg-black/10 mb-8" />
-                
-                {/* Notes section */}
-                <div>
-                  <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Notes</p>
-                  <textarea
-                    value={localTodayNotes}
-                    onChange={(e) => handleTodayNotesChange(e.target.value)}
-                    placeholder="Capture your thoughts..."
-                    className="w-full text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed overflow-y-auto"
-                    style={{ height: 'calc(100vh - 400px)' }}
+                {/* Add task input */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[14px] text-black/30">[+]</span>
+                  <input
+                    type="text"
+                    value={newTask}
+                    onChange={(e) => setNewTask(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                    placeholder="Add a task..."
+                    className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
                   />
                 </div>
               </div>
               
+              {/* Divider */}
+              <div className="h-px bg-black/10 mb-6 flex-shrink-0" />
+              
+              {/* Notes section - fills remaining space */}
+              <div className="flex-1 flex flex-col min-h-0">
+                <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4 flex-shrink-0">Notes</p>
+                <textarea
+                  value={localTodayNotes}
+                  onChange={(e) => handleTodayNotesChange(e.target.value)}
+                  placeholder="Capture your thoughts..."
+                  className="flex-1 w-full text-[14px] text-black bg-transparent outline-none resize-none placeholder:text-black/30 leading-relaxed overflow-y-auto min-h-0"
+                />
+              </div>
+              
               {/* Save to Index section - fixed at bottom */}
-              <div className="pt-3 border-t border-black/10 flex items-center justify-between mt-auto">
+              <div className="pt-3 border-t border-black/10 flex items-center justify-between flex-shrink-0">
                 <p className="text-[11px] text-black/30">
                   auto-saves at 11:45pm
                 </p>
@@ -2211,7 +2204,7 @@ export default function Home() {
                 >
                   {dailySaved ? '✓ saved' : 'save to index →'}
                 </button>
-        </div>
+              </div>
             </div>
           )}
           
