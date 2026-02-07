@@ -1863,19 +1863,20 @@ export default function Home() {
       {/* Right section - Home dashboard - Desktop only */}
       {!isMobile && stage === 'second' && activeView === 'home' && (
         <div 
-          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          className="absolute top-0 bottom-0 right-0"
           style={{ 
             left: '32%',
             opacity: showAbout ? 1 : 0,
             transition: 'opacity 0.5s ease-in',
+            fontFamily: 'var(--font-inter)',
           }}
         >
-          {/* Top row: Today card + Date card */}
-          <div className="flex gap-0 flex-1 min-h-0">
-            {/* LEFT: Today summary + tasks */}
+          {/* Two cards side by side, each ~1/3 page width, 50% height */}
+          <div className="flex h-[50%]">
+            {/* LEFT CARD: Today summary + tasks */}
             <div className="flex-1 border-r border-black/10 flex flex-col p-8 min-h-0">
               {/* Section label */}
-              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-5">today</p>
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-5" style={{ fontFamily: 'var(--font-inter)' }}>today</p>
               
               {/* AI Summary */}
               <p className="text-[14px] text-black/70 leading-[1.6] italic mb-8" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
@@ -1883,12 +1884,12 @@ export default function Home() {
               </p>
               
               {/* Tasks label */}
-              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">tasks</p>
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3" style={{ fontFamily: 'var(--font-inter)' }}>tasks</p>
               
               {/* Tasks table */}
               <div className="flex-1 overflow-y-auto min-h-0">
                 {(todayTasks ?? []).length === 0 ? (
-                  <p className="text-[13px] text-black/30 italic">No tasks for today yet.</p>
+                  <p className="text-[13px] text-black/30 italic" style={{ fontFamily: 'var(--font-inter)' }}>No tasks for today yet.</p>
                 ) : (
                   <div>
                     {(todayTasks ?? []).map((task, idx) => (
@@ -1898,7 +1899,7 @@ export default function Home() {
                         onClick={() => toggleTask(task._id, task.status === 'completed')}
                       >
                         {/* Number */}
-                        <span className="text-[12px] text-black/25 w-5 text-right tabular-nums flex-shrink-0 font-medium">
+                        <span className="text-[12px] text-black/25 w-5 text-right tabular-nums flex-shrink-0 font-medium" style={{ fontFamily: 'var(--font-inter)' }}>
                           {String(idx + 1).padStart(2, '0')}
                         </span>
                         
@@ -1911,7 +1912,10 @@ export default function Home() {
                         />
                         
                         {/* Task text */}
-                        <span className={`text-[13px] flex-1 tracking-[-0.01em] ${task.status === 'completed' ? 'text-black/35 line-through' : 'text-black'}`}>
+                        <span 
+                          className={`text-[13px] flex-1 tracking-[-0.01em] ${task.status === 'completed' ? 'text-black/35 line-through' : 'text-black'}`}
+                          style={{ fontFamily: 'var(--font-inter)' }}
+                        >
                           {task.text}
                         </span>
                       </div>
@@ -1921,10 +1925,10 @@ export default function Home() {
               </div>
             </div>
             
-            {/* RIGHT: Date + Events */}
-            <div className="w-[300px] flex-shrink-0 flex flex-col p-8">
+            {/* RIGHT CARD: Date + Events */}
+            <div className="flex-1 flex flex-col p-8">
               {/* Time + Location */}
-              <div className="flex items-center gap-2 text-[12px] text-black/40 mb-6">
+              <div className="flex items-center gap-2 text-[12px] text-black/40 mb-6" style={{ fontFamily: 'var(--font-inter)' }}>
                 <span className="tabular-nums">{currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                 <span className="text-black/20">|</span>
                 <span>London, England</span>
@@ -1932,7 +1936,7 @@ export default function Home() {
               
               {/* Large date */}
               <div className="mb-10">
-                <p className="text-[56px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                <p className="text-[48px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
                   {(() => {
                     const day = currentTime.getDate();
                     const suffix = day === 1 || day === 21 || day === 31 ? 'st' 
@@ -1941,13 +1945,13 @@ export default function Home() {
                     return `${day}${suffix}`;
                   })()}
                 </p>
-                <p className="text-[56px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                <p className="text-[48px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
                   {currentTime.toLocaleDateString('en-GB', { month: 'long' })}
                 </p>
               </div>
               
               {/* Events label */}
-              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-4">events</p>
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-4" style={{ fontFamily: 'var(--font-inter)' }}>events</p>
               
               {/* Events list - placeholder for now */}
               <div className="space-y-4">
@@ -1955,7 +1959,7 @@ export default function Home() {
                   <div key={i} className="flex items-center gap-3">
                     <div className="w-[6px] h-[6px] bg-black/15 flex-shrink-0" />
                     <div>
-                      <p className="text-[13px] text-black/25">Event name - time</p>
+                      <p className="text-[13px] text-black/25" style={{ fontFamily: 'var(--font-inter)' }}>Event name - time</p>
                     </div>
                   </div>
                 ))}
