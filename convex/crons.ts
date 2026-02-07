@@ -15,5 +15,14 @@ crons.daily(
   internal.cronHandlers.processDailyNotesCron
 );
 
+// Consolidate similar notes at 2am daily
+// Runs after daily notes are processed, finds and merges duplicate/similar notes
+// This keeps the knowledge base clean and reduces noise
+crons.daily(
+  "consolidate notes",
+  { hourUTC: 2, minuteUTC: 0 },
+  internal.cronHandlers.consolidateNotesCron
+);
+
 export default crons;
 

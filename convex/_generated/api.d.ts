@@ -19,6 +19,7 @@ import type * as embeddings from "../embeddings.js";
 import type * as heatmap from "../heatmap.js";
 import type * as http from "../http.js";
 import type * as knowledgeGraph from "../knowledgeGraph.js";
+import type * as noteConsolidator from "../noteConsolidator.js";
 import type * as passkey from "../passkey.js";
 import type * as seed from "../seed.js";
 import type * as taskBank from "../taskBank.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   heatmap: typeof heatmap;
   http: typeof http;
   knowledgeGraph: typeof knowledgeGraph;
+  noteConsolidator: typeof noteConsolidator;
   passkey: typeof passkey;
   seed: typeof seed;
   taskBank: typeof taskBank;

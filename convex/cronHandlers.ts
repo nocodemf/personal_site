@@ -59,7 +59,7 @@ export const processDailyNotesCron = internalAction({
     // Also save today's note at 11:45pm
     // Re-fetch since we just updated it with the task snapshot
     const refreshedDailyNotes = await ctx.runQuery(internal.cronHandlers.getAllDailyNotes, {});
-    const todayNote = refreshedDailyNotes.find(n => n.date === today);
+    const todayNote = refreshedDailyNotes.find((n: any) => n.date === today);
     if (todayNote && !todayNote.savedToIndex && (todayNote.notes.trim() || todayNote.tasks.length > 0)) {
       try {
         const result = await ctx.runMutation(internal.dailyNotes.saveDailyToIndex, {
@@ -238,6 +238,51 @@ export const unscheduleCompletedAndCarryOver = internalMutation({
         });
       }
       // Completed tasks keep their scheduledDate as historical record
+    }
+  },
+});
+
+// =============================================
+// NOTE CONSOLIDATION - Runs at 2am daily
+// Finds and merges similar/duplicate notes
+// =============================================
+export const consolidateNotesCron = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    candidatesFound: number;
+    merged: number;
+    skipped: number;
+    details: any[];
+  }> => {
+    console.log("Starting daily note consolidation...");
+    
+    try {
+      const result: {
+        candidatesFound: number;
+        merged: number;
+        skipped: number;
+        details: Array<{
+          noteA: string;
+          noteB: string;
+          action: string;
+          reason: string;
+          similarity: number;
+        }>;
+      } = await ctx.runAction(api.noteConsolidator.consolidateNotes, {});
+      
+      console.log(`Consolidation complete:`);
+      console.log(`  Candidates found: ${result.candidatesFound}`);
+      console.log(`  Merged: ${result.merged}`);
+      console.log(`  Kept separate: ${result.skipped}`);
+      
+      for (const detail of result.details) {
+        console.log(`  ${detail.action}: "${detail.noteA}" + "${detail.noteB}" (${detail.similarity.toFixed(3)}) - ${detail.reason}`);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error("Note consolidation failed:", error);
+      return { candidatesFound: 0, merged: 0, skipped: 0, details: [] };
     }
   },
 });
