@@ -50,6 +50,14 @@ export const updateNotes = mutation({
         notes: args.notes,
         updatedAt: Date.now(),
       });
+      
+      // Schedule AI summary regeneration (debounced: only if last summary is >30s old)
+      const summaryAge = existing.aiSummaryUpdatedAt 
+        ? Date.now() - existing.aiSummaryUpdatedAt 
+        : Infinity;
+      if (summaryAge > 30000) {
+        await ctx.scheduler.runAfter(10000, internal.dailyNotes.generateTodaySummary, {});
+      }
     } else {
       await ctx.db.insert("dailyNotes", {
         date: today,
@@ -58,6 +66,8 @@ export const updateNotes = mutation({
         savedToIndex: false,
         updatedAt: Date.now(),
       });
+      // First note of the day — schedule summary
+      await ctx.scheduler.runAfter(10000, internal.dailyNotes.generateTodaySummary, {});
     }
   },
 });
@@ -279,28 +289,29 @@ export const getTodayForSummary = internalQuery({
       .withIndex("by_date", (q) => q.eq("date", today))
       .first();
     
-    // Get today's tasks from taskBank
-    const tasks = await ctx.db
-      .query("taskBank")
-      .withIndex("by_status_and_date", (q) =>
-        q.eq("status", "active").eq("scheduledDate", today)
-      )
-      .collect();
-    
-    // Also get completed tasks for today
-    const completedTasks = await ctx.db
+    // Get today's tasks from taskBank (all scheduled for today)
+    const allTodayTasks = await ctx.db
       .query("taskBank")
       .withIndex("by_scheduledDate", (q) => q.eq("scheduledDate", today))
       .collect();
     
+    // Get recent notes for tone/voice learning (last 5 non-daily notes)
+    const recentNotes = await ctx.db.query("notes").order("desc").take(10);
+    const toneExamples = recentNotes
+      .filter((n) => !n.tags.includes("daily"))
+      .slice(0, 3)
+      .map((n) => n.body.slice(0, 200));
+    
     return {
       date: today,
       notes: dailyNote?.notes || "",
-      tasks: completedTasks.map((t) => ({
+      tasks: allTodayTasks.map((t) => ({
         text: t.text,
         completed: t.status === "completed",
       })),
       currentSummary: dailyNote?.aiSummary || null,
+      aiSummaryUpdatedAt: dailyNote?.aiSummaryUpdatedAt || null,
+      toneExamples,
     };
   },
 });
@@ -337,6 +348,7 @@ export const updateAiSummary = internalMutation({
 });
 
 // Action: Generate AI summary of today's activity
+// Triggered reactively when notes or tasks change (with debounce)
 export const generateTodaySummary = internalAction({
   args: {},
   handler: async (ctx): Promise<{ summary: string | null }> => {
@@ -344,6 +356,11 @@ export const generateTodaySummary = internalAction({
       internal.dailyNotes.getTodayForSummary,
       {}
     );
+    
+    // Dedup: skip if summary was updated less than 25s ago
+    if (todayData.aiSummaryUpdatedAt && Date.now() - todayData.aiSummaryUpdatedAt < 25000) {
+      return { summary: todayData.currentSummary };
+    }
     
     // Skip if nothing to summarize
     const hasNotes = todayData.notes.trim().length > 0;
@@ -355,39 +372,49 @@ export const generateTodaySummary = internalAction({
     
     // Build content for the AI
     const tasksText = todayData.tasks
-      .map((t) => `[${t.completed ? "✓" : " "}] ${t.text}`)
+      .map((t: { text: string; completed: boolean }) => `[${t.completed ? "done" : "todo"}] ${t.text}`)
       .join("\n");
     
-    const content = `
-${hasTasks ? `Tasks:\n${tasksText}` : ""}
-${hasNotes ? `\nNotes:\n${todayData.notes}` : ""}
-    `.trim();
+    const content = [
+      hasTasks ? `Tasks:\n${tasksText}` : "",
+      hasNotes ? `Notes:\n${todayData.notes}` : "",
+    ].filter(Boolean).join("\n\n");
+    
+    // Build tone examples from past notes
+    const toneSection = todayData.toneExamples.length > 0
+      ? `\n\nHere's how I normally write (match this tone exactly):\n${todayData.toneExamples.map((ex: string) => `"${ex}"`).join("\n")}`
+      : "";
     
     try {
       const response = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.VERCEL_AI_GATEWAY_API_KEY}`,
+          Authorization: `Bearer ${process.env.VERCEL_AI_GATEWAY_API_KEY}`,
         },
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: [
             {
               role: "system",
-              content: `You write a single casual, insightful sentence about what the user has been thinking about and doing today. 
-Speak directly to them in second person ("You've been..."). 
-Be specific about the TOPICS, not generic. Reference actual things they mentioned.
-If they seem stressed or busy, gently acknowledge it and suggest something helpful.
-Keep it warm but concise - ONE sentence only, max 30 words.`,
+              content: `You're writing a one-liner that sits at the top of someone's personal dashboard. It should read like an internal thought — something they'd say to themselves.
+
+Rules:
+- ONE sentence. Max 20 words. No fluff.
+- Write in second person ("you're..." or "mostly..."). Lowercase start is fine.
+- Be SPECIFIC. Reference the actual topics, projects, or tasks they mentioned. Never be generic.
+- Match their writing style: direct, casual, no corporate speak, slightly punchy.
+- If they're clearly grinding on something, acknowledge it. If things are calm, keep it light.
+- No quotes, no emoji, no exclamation marks. Just a clean sentence.
+- Don't start with "You've been" every time — vary it. Sometimes start with the topic itself.`,
             },
             {
               role: "user",
-              content: `Here's what I've been doing today:\n\n${content}`,
+              content: `Here's what I've been up to today:\n\n${content}${toneSection}`,
             },
           ],
-          max_tokens: 100,
-          temperature: 0.7,
+          max_tokens: 60,
+          temperature: 0.8,
         }),
       });
       
@@ -397,7 +424,8 @@ Keep it warm but concise - ONE sentence only, max 30 words.`,
       }
       
       const data = await response.json();
-      const summary = data.choices?.[0]?.message?.content?.trim();
+      const summary = data.choices?.[0]?.message?.content?.trim()
+        ?.replace(/^["']|["']$/g, ""); // Strip any wrapping quotes
       
       if (summary) {
         await ctx.runMutation(internal.dailyNotes.updateAiSummary, { summary });

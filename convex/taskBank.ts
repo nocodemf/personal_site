@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // Get today's date string in YYYY-MM-DD format
 function getTodayDateString(): string {
@@ -66,12 +67,19 @@ export const addTask = mutation({
     const today = getTodayDateString();
     const scheduleForToday = args.scheduleForToday !== false;
 
-    return await ctx.db.insert("taskBank", {
+    const id = await ctx.db.insert("taskBank", {
       text: args.text,
       status: "active",
       scheduledDate: scheduleForToday ? today : undefined,
       createdAt: Date.now(),
     });
+
+    // Trigger AI summary refresh
+    if (scheduleForToday) {
+      await ctx.scheduler.runAfter(5000, internal.dailyNotes.generateTodaySummary, {});
+    }
+
+    return id;
   },
 });
 
@@ -83,6 +91,8 @@ export const completeTask = mutation({
       status: "completed",
       completedAt: Date.now(),
     });
+    // Trigger AI summary refresh
+    await ctx.scheduler.runAfter(3000, internal.dailyNotes.generateTodaySummary, {});
   },
 });
 
@@ -96,6 +106,8 @@ export const uncompleteTask = mutation({
       completedAt: undefined,
       scheduledDate: today,
     });
+    // Trigger AI summary refresh
+    await ctx.scheduler.runAfter(3000, internal.dailyNotes.generateTodaySummary, {});
   },
 });
 
