@@ -21,6 +21,7 @@ import type * as http from "../http.js";
 import type * as knowledgeGraph from "../knowledgeGraph.js";
 import type * as passkey from "../passkey.js";
 import type * as seed from "../seed.js";
+import type * as taskBank from "../taskBank.js";
 import type * as updateNotes from "../updateNotes.js";
 import type * as whatsappBot from "../whatsappBot.js";
 
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   knowledgeGraph: typeof knowledgeGraph;
   passkey: typeof passkey;
   seed: typeof seed;
+  taskBank: typeof taskBank;
   updateNotes: typeof updateNotes;
   whatsappBot: typeof whatsappBot;
 }>;
