@@ -108,6 +108,9 @@ export default defineSchema({
     })),
     savedToIndex: v.boolean(), // Has this been saved as a permanent note?
     updatedAt: v.number(),
+    // AI-generated one-sentence summary of what the user is thinking/doing today
+    aiSummary: v.optional(v.string()),
+    aiSummaryUpdatedAt: v.optional(v.number()),
   }).index("by_date", ["date"]),
 
   // Task Bank - persistent task storage that survives day boundaries

@@ -24,5 +24,13 @@ crons.daily(
   internal.cronHandlers.consolidateNotesCron
 );
 
+// Generate AI summary of today's activity every 30 minutes
+// Reads the today note + tasks and creates a one-sentence overview
+crons.interval(
+  "generate today summary",
+  { minutes: 30 },
+  internal.dailyNotes.generateTodaySummary
+);
+
 export default crons;
 

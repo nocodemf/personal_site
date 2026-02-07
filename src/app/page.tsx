@@ -330,6 +330,9 @@ export default function Home() {
   // Task Bank - persistent task storage
   const todayTasks = useQuery(api.taskBank.getTodayTasks, {});
   const backlogTasks = useQuery(api.taskBank.getBacklog, {});
+  
+  // AI-generated today summary (updated every 30 min)
+  const todaySummary = useQuery(api.dailyNotes.getTodaySummary, {});
   const addTaskMutation = useMutation(api.taskBank.addTask);
   const completeTaskMutation = useMutation(api.taskBank.completeTask);
   const uncompleteTaskMutation = useMutation(api.taskBank.uncompleteTask);
@@ -1852,6 +1855,111 @@ export default function Home() {
               >
                 archive
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Right section - Home dashboard - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'home' && (
+        <div 
+          className="absolute top-0 bottom-0 right-0 flex flex-col"
+          style={{ 
+            left: '32%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.5s ease-in',
+          }}
+        >
+          {/* Top row: Today card + Date card */}
+          <div className="flex gap-0 flex-1 min-h-0">
+            {/* LEFT: Today summary + tasks */}
+            <div className="flex-1 border-r border-black/10 flex flex-col p-8 min-h-0">
+              {/* Section label */}
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-5">today</p>
+              
+              {/* AI Summary */}
+              <p className="text-[14px] text-black/70 leading-[1.6] italic mb-8" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                {todaySummary?.summary || "Start adding notes and tasks to get your daily summary."}
+              </p>
+              
+              {/* Tasks label */}
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">tasks</p>
+              
+              {/* Tasks table */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {(todayTasks ?? []).length === 0 ? (
+                  <p className="text-[13px] text-black/30 italic">No tasks for today yet.</p>
+                ) : (
+                  <div>
+                    {(todayTasks ?? []).map((task, idx) => (
+                      <div 
+                        key={task._id}
+                        className="flex items-center gap-3 py-3 border-b border-black/10 group cursor-pointer hover:bg-black/[0.02] transition-colors -mx-2 px-2"
+                        onClick={() => toggleTask(task._id, task.status === 'completed')}
+                      >
+                        {/* Number */}
+                        <span className="text-[12px] text-black/25 w-5 text-right tabular-nums flex-shrink-0 font-medium">
+                          {String(idx + 1).padStart(2, '0')}
+                        </span>
+                        
+                        {/* Status dot */}
+                        <div 
+                          className="w-[7px] h-[7px] flex-shrink-0 transition-colors"
+                          style={{ 
+                            backgroundColor: task.status === 'completed' ? '#4ade80' : '#1a1a1a',
+                          }}
+                        />
+                        
+                        {/* Task text */}
+                        <span className={`text-[13px] flex-1 tracking-[-0.01em] ${task.status === 'completed' ? 'text-black/35 line-through' : 'text-black'}`}>
+                          {task.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* RIGHT: Date + Events */}
+            <div className="w-[300px] flex-shrink-0 flex flex-col p-8">
+              {/* Time + Location */}
+              <div className="flex items-center gap-2 text-[12px] text-black/40 mb-6">
+                <span className="tabular-nums">{currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="text-black/20">|</span>
+                <span>London, England</span>
+              </div>
+              
+              {/* Large date */}
+              <div className="mb-10">
+                <p className="text-[56px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                  {(() => {
+                    const day = currentTime.getDate();
+                    const suffix = day === 1 || day === 21 || day === 31 ? 'st' 
+                      : day === 2 || day === 22 ? 'nd' 
+                      : day === 3 || day === 23 ? 'rd' : 'th';
+                    return `${day}${suffix}`;
+                  })()}
+                </p>
+                <p className="text-[56px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                  {currentTime.toLocaleDateString('en-GB', { month: 'long' })}
+                </p>
+              </div>
+              
+              {/* Events label */}
+              <p className="text-[11px] text-black/40 uppercase tracking-wider mb-4">events</p>
+              
+              {/* Events list - placeholder for now */}
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="w-[6px] h-[6px] bg-black/15 flex-shrink-0" />
+                    <div>
+                      <p className="text-[13px] text-black/25">Event name - time</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

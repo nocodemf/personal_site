@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, action } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, internalAction, action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 
 // Get today's date string in YYYY-MM-DD format
@@ -259,6 +259,174 @@ export const manualSaveToIndex = action({
     }
     
     return { saved: result.saved, title: result.title || null };
+  },
+});
+
+// =============================================
+// AI SUMMARY - Generates a one-sentence overview
+// of what the user is thinking/doing today
+// =============================================
+
+// Internal query to get today's data for summary generation
+export const getTodayForSummary = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const today = getTodayDateString();
+    
+    // Get today's notes
+    const dailyNote = await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_date", (q) => q.eq("date", today))
+      .first();
+    
+    // Get today's tasks from taskBank
+    const tasks = await ctx.db
+      .query("taskBank")
+      .withIndex("by_status_and_date", (q) =>
+        q.eq("status", "active").eq("scheduledDate", today)
+      )
+      .collect();
+    
+    // Also get completed tasks for today
+    const completedTasks = await ctx.db
+      .query("taskBank")
+      .withIndex("by_scheduledDate", (q) => q.eq("scheduledDate", today))
+      .collect();
+    
+    return {
+      date: today,
+      notes: dailyNote?.notes || "",
+      tasks: completedTasks.map((t) => ({
+        text: t.text,
+        completed: t.status === "completed",
+      })),
+      currentSummary: dailyNote?.aiSummary || null,
+    };
+  },
+});
+
+// Internal mutation to save AI summary
+export const updateAiSummary = internalMutation({
+  args: {
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const today = getTodayDateString();
+    const existing = await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_date", (q) => q.eq("date", today))
+      .first();
+    
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        aiSummary: args.summary,
+        aiSummaryUpdatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("dailyNotes", {
+        date: today,
+        notes: "",
+        tasks: [],
+        savedToIndex: false,
+        updatedAt: Date.now(),
+        aiSummary: args.summary,
+        aiSummaryUpdatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+// Action: Generate AI summary of today's activity
+export const generateTodaySummary = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ summary: string | null }> => {
+    const todayData = await ctx.runQuery(
+      internal.dailyNotes.getTodayForSummary,
+      {}
+    );
+    
+    // Skip if nothing to summarize
+    const hasNotes = todayData.notes.trim().length > 0;
+    const hasTasks = todayData.tasks.length > 0;
+    
+    if (!hasNotes && !hasTasks) {
+      return { summary: null };
+    }
+    
+    // Build content for the AI
+    const tasksText = todayData.tasks
+      .map((t) => `[${t.completed ? "✓" : " "}] ${t.text}`)
+      .join("\n");
+    
+    const content = `
+${hasTasks ? `Tasks:\n${tasksText}` : ""}
+${hasNotes ? `\nNotes:\n${todayData.notes}` : ""}
+    `.trim();
+    
+    try {
+      const response = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.VERCEL_AI_GATEWAY_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You write a single casual, insightful sentence about what the user has been thinking about and doing today. 
+Speak directly to them in second person ("You've been..."). 
+Be specific about the TOPICS, not generic. Reference actual things they mentioned.
+If they seem stressed or busy, gently acknowledge it and suggest something helpful.
+Keep it warm but concise - ONE sentence only, max 30 words.`,
+            },
+            {
+              role: "user",
+              content: `Here's what I've been doing today:\n\n${content}`,
+            },
+          ],
+          max_tokens: 100,
+          temperature: 0.7,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error("AI summary API error:", response.statusText);
+        return { summary: null };
+      }
+      
+      const data = await response.json();
+      const summary = data.choices?.[0]?.message?.content?.trim();
+      
+      if (summary) {
+        await ctx.runMutation(internal.dailyNotes.updateAiSummary, { summary });
+        console.log(`Generated today summary: "${summary}"`);
+        return { summary };
+      }
+      
+      return { summary: null };
+    } catch (error) {
+      console.error("Failed to generate today summary:", error);
+      return { summary: null };
+    }
+  },
+});
+
+// Query to get today's AI summary (for the frontend)
+export const getTodaySummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const today = getTodayDateString();
+    const dailyNote = await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_date", (q) => q.eq("date", today))
+      .first();
+    
+    return {
+      summary: dailyNote?.aiSummary || null,
+      updatedAt: dailyNote?.aiSummaryUpdatedAt || null,
+    };
   },
 });
 
