@@ -11,6 +11,28 @@ export const processDailyNotesCron = internalAction({
     const today = new Date().toISOString().split('T')[0];
     let savedCount = 0;
     const savedNoteIds: string[] = [];
+
+    // ============================================
+    // TASK BANK: Snapshot today's tasks from taskBank into dailyNotes
+    // before saving, so the index note has accurate task data
+    // ============================================
+    try {
+      await ctx.runMutation(internal.cronHandlers.snapshotTasksForDate, { date: today });
+      console.log(`Snapshotted taskBank tasks into dailyNotes for ${today}`);
+    } catch (error) {
+      console.error(`Failed to snapshot tasks:`, error);
+    }
+
+    // ============================================
+    // TASK BANK: Unschedule all tasks still active for today
+    // They'll appear in backlog tomorrow automatically
+    // ============================================
+    try {
+      await ctx.runMutation(internal.cronHandlers.unscheduleCompletedAndCarryOver, { date: today });
+      console.log(`Processed taskBank end-of-day for ${today}`);
+    } catch (error) {
+      console.error(`Failed to process taskBank end-of-day:`, error);
+    }
     
     for (const dailyNote of allDailyNotes) {
       // Skip today's notes and already saved notes
@@ -35,7 +57,9 @@ export const processDailyNotesCron = internalAction({
     }
     
     // Also save today's note at 11:45pm
-    const todayNote = allDailyNotes.find(n => n.date === today);
+    // Re-fetch since we just updated it with the task snapshot
+    const refreshedDailyNotes = await ctx.runQuery(internal.cronHandlers.getAllDailyNotes, {});
+    const todayNote = refreshedDailyNotes.find(n => n.date === today);
     if (todayNote && !todayNote.savedToIndex && (todayNote.notes.trim() || todayNote.tasks.length > 0)) {
       try {
         const result = await ctx.runMutation(internal.dailyNotes.saveDailyToIndex, {
@@ -131,7 +155,7 @@ export const processDailyNotesCron = internalAction({
 });
 
 // Internal query to get all daily notes (for cron handler)
-import { internalQuery } from "./_generated/server";
+import { internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const getAllDailyNotes = internalQuery({
@@ -149,6 +173,72 @@ export const getDailyNoteContent = internalQuery({
       .query("dailyNotes")
       .withIndex("by_date", (q) => q.eq("date", args.date))
       .first();
+  },
+});
+
+// Snapshot taskBank tasks into dailyNotes.tasks for a given date
+// This ensures the save-to-index flow captures accurate task data
+export const snapshotTasksForDate = internalMutation({
+  args: { date: v.string() },
+  handler: async (ctx, args) => {
+    // Get all taskBank tasks scheduled for this date
+    const tasks = await ctx.db
+      .query("taskBank")
+      .withIndex("by_scheduledDate", (q) => q.eq("scheduledDate", args.date))
+      .collect();
+
+    if (tasks.length === 0) return;
+
+    // Build the tasks array for dailyNotes
+    const snapshotTasks = tasks.map((t) => ({
+      text: t.text,
+      completed: t.status === "completed",
+    }));
+
+    // Update (or create) the dailyNotes entry
+    const existing = await ctx.db
+      .query("dailyNotes")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        tasks: snapshotTasks,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("dailyNotes", {
+        date: args.date,
+        notes: "",
+        tasks: snapshotTasks,
+        savedToIndex: false,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+// End-of-day task processing:
+// - Completed tasks: keep as "completed" (they're done)
+// - Active tasks still scheduled for today: unschedule them
+//   so they appear in backlog tomorrow
+export const unscheduleCompletedAndCarryOver = internalMutation({
+  args: { date: v.string() },
+  handler: async (ctx, args) => {
+    const tasks = await ctx.db
+      .query("taskBank")
+      .withIndex("by_scheduledDate", (q) => q.eq("scheduledDate", args.date))
+      .collect();
+
+    for (const task of tasks) {
+      if (task.status === "active") {
+        // Uncompleted task → unschedule so it appears in backlog tomorrow
+        await ctx.db.patch(task._id, {
+          scheduledDate: undefined,
+        });
+      }
+      // Completed tasks keep their scheduledDate as historical record
+    }
   },
 });
 

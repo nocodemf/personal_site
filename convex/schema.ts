@@ -110,6 +110,19 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_date", ["date"]),
 
+  // Task Bank - persistent task storage that survives day boundaries
+  // Uncompleted tasks automatically appear in backlog the next day
+  taskBank: defineTable({
+    text: v.string(),
+    status: v.string(), // "active" | "completed" | "dismissed"
+    scheduledDate: v.optional(v.string()), // "2026-02-07" if on a day's list, undefined if just backlog
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_scheduledDate", ["scheduledDate"])
+    .index("by_status_and_date", ["status", "scheduledDate"]),
+
   // Passkey credentials for biometric authentication (single user)
   passkeys: defineTable({
     credentialId: v.string(), // Base64url-encoded credential ID

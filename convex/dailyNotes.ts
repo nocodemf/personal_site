@@ -173,15 +173,20 @@ export const manualSaveToIndexMutation = internalMutation({
       .withIndex("by_date", (q) => q.eq("date", today))
       .first();
     
-    if (!dailyNote || dailyNote.savedToIndex) return { saved: false, noteId: null };
+    // Get tasks from taskBank for today
+    const bankTasks = await ctx.db
+      .query("taskBank")
+      .withIndex("by_scheduledDate", (q) => q.eq("scheduledDate", today))
+      .collect();
     
-    // Skip if empty
-    if (!dailyNote.notes.trim() && dailyNote.tasks.length === 0) {
-      return { saved: false, noteId: null };
-    }
+    const notesContent = dailyNote?.notes?.trim() || '';
+    const hasTasks = bankTasks.length > 0;
+    
+    if (!notesContent && !hasTasks) return { saved: false, noteId: null };
+    if (dailyNote?.savedToIndex) return { saved: false, noteId: null };
     
     // Format date for title
-    const date = new Date(dailyNote.date + 'T12:00:00');
+    const date = new Date(today + 'T12:00:00');
     const dateStr = date.toLocaleDateString('en-GB', { 
       weekday: 'long', 
       day: '2-digit', 
@@ -189,12 +194,12 @@ export const manualSaveToIndexMutation = internalMutation({
       year: 'numeric' 
     });
     
-    // Format tasks as part of the body
-    const tasksText = dailyNote.tasks.length > 0 
-      ? `**Tasks:**\n${dailyNote.tasks.map(t => `[${t.completed ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
+    // Format tasks from taskBank as part of the body
+    const tasksText = hasTasks 
+      ? `**Tasks:**\n${bankTasks.map(t => `[${t.status === 'completed' ? '✓' : ' '}] ${t.text}`).join('\n')}\n\n`
       : '';
     
-    const body = tasksText + (dailyNote.notes || '');
+    const body = tasksText + notesContent;
     
     // Get note count for order
     const allNotes = await ctx.db.query("notes").collect();
@@ -211,12 +216,14 @@ export const manualSaveToIndexMutation = internalMutation({
       updatedAt: Date.now(),
     });
     
-    // Mark as saved and clear content for fresh start
-    await ctx.db.patch(dailyNote._id, {
-      savedToIndex: true,
-      notes: "",
-      tasks: [],
-    });
+    // Mark daily note as saved and clear content for fresh start
+    if (dailyNote) {
+      await ctx.db.patch(dailyNote._id, {
+        savedToIndex: true,
+        notes: "",
+        tasks: bankTasks.map(t => ({ text: t.text, completed: t.status === 'completed' })),
+      });
+    }
     
     return { saved: true, title: dateStr, noteId };
   },

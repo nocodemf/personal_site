@@ -325,15 +325,22 @@ export default function Home() {
   // Today notes - stored in Convex (server-side)
   const todayData = useQuery(api.dailyNotes.getToday, {});
   const updateTodayNotesMutation = useMutation(api.dailyNotes.updateNotes);
-  const updateTodayTasksMutation = useMutation(api.dailyNotes.updateTasks);
   const manualSaveToIndexAction = useAction(api.dailyNotes.manualSaveToIndex);
+  
+  // Task Bank - persistent task storage
+  const todayTasks = useQuery(api.taskBank.getTodayTasks, {});
+  const backlogTasks = useQuery(api.taskBank.getBacklog, {});
+  const addTaskMutation = useMutation(api.taskBank.addTask);
+  const completeTaskMutation = useMutation(api.taskBank.completeTask);
+  const uncompleteTaskMutation = useMutation(api.taskBank.uncompleteTask);
+  const scheduleForTodayMutation = useMutation(api.taskBank.scheduleForToday);
+  const dismissTaskMutation = useMutation(api.taskBank.dismissTask);
+  const [showBacklog, setShowBacklog] = useState(false);
   
   // Local state for optimistic UI (syncs with Convex)
   const [localTodayNotes, setLocalTodayNotes] = useState('');
-  const [localTodayTasks, setLocalTodayTasks] = useState<{text: string; completed: boolean}[]>([]);
   const [dailySaved, setDailySaved] = useState(false);
   const todayNotesDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const todayTasksDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // Sync local state with Convex data ONLY on initial load (not during typing)
   // Track which date we've initialized to handle day changes
@@ -343,7 +350,6 @@ export default function Home() {
       // Initialize if we haven't, or if the date changed (new day)
       if (initializedDateRef.current !== todayData.date) {
         setLocalTodayNotes(todayData.notes);
-        setLocalTodayTasks(todayData.tasks);
         initializedDateRef.current = todayData.date;
       }
       // Always update savedToIndex flag from server (this doesn't affect cursor)
@@ -362,19 +368,6 @@ export default function Home() {
     todayNotesDebounceRef.current = setTimeout(() => {
       updateTodayNotesMutation({ notes: newNotes });
     }, 500); // Save after 500ms of no typing
-  };
-  
-  // Debounced save to Convex when tasks change
-  const handleTodayTasksChange = (newTasks: {text: string; completed: boolean}[]) => {
-    setLocalTodayTasks(newTasks);
-    
-    if (todayTasksDebounceRef.current) {
-      clearTimeout(todayTasksDebounceRef.current);
-    }
-    
-    todayTasksDebounceRef.current = setTimeout(() => {
-      updateTodayTasksMutation({ tasks: newTasks });
-    }, 500);
   };
   const [currentTime, setCurrentTime] = useState(new Date());
   const [archiveFilter, setArchiveFilter] = useState<string | null>(null);
@@ -470,17 +463,17 @@ export default function Home() {
   
   const addTask = () => {
     if (newTask.trim()) {
-      const newTasks = [...localTodayTasks, { text: newTask.trim(), completed: false }];
-      handleTodayTasksChange(newTasks);
+      addTaskMutation({ text: newTask.trim() });
       setNewTask('');
     }
   };
   
-  const toggleTask = (idx: number) => {
-    const newTasks = localTodayTasks.map((task, i) => 
-      i === idx ? { ...task, completed: !task.completed } : task
-    );
-    handleTodayTasksChange(newTasks);
+  const toggleTask = (taskId: Id<"taskBank">, isCompleted: boolean) => {
+    if (isCompleted) {
+      uncompleteTaskMutation({ taskId });
+    } else {
+      completeTaskMutation({ taskId });
+    }
   };
   
   // Fetch notes and tags from Convex
@@ -643,14 +636,14 @@ export default function Home() {
   
   // Save daily note to index (manual button) - uses Convex mutation
   const saveDailyToIndex = async () => {
-    if (!localTodayNotes.trim() && localTodayTasks.length === 0) return;
+    const hasTasks = todayTasks && todayTasks.length > 0;
+    if (!localTodayNotes.trim() && !hasTasks) return;
     
     const result = await manualSaveToIndexAction({});
     
     if (result.saved) {
-      // Clear local state
+      // Clear local notes state
       setLocalTodayNotes('');
-      setLocalTodayTasks([]);
       setDailySaved(true);
       
       // Reset saved status after a moment
@@ -662,7 +655,6 @@ export default function Home() {
   useEffect(() => {
     return () => {
       if (todayNotesDebounceRef.current) clearTimeout(todayNotesDebounceRef.current);
-      if (todayTasksDebounceRef.current) clearTimeout(todayTasksDebounceRef.current);
     };
   }, []);
   
@@ -1129,12 +1121,12 @@ export default function Home() {
                     </p>
                     <div>
                       <p className="text-[12px] text-black/50 uppercase mb-2">Tasks</p>
-                      {localTodayTasks.map((task, idx) => (
-                        <div key={idx} className="flex items-center gap-2 py-1">
-                          <button onClick={() => toggleTask(idx)} className="text-[14px] text-black/50">
-                            [{task.completed ? '✓' : ' '}]
+                      {(todayTasks ?? []).map((task) => (
+                        <div key={task._id} className="flex items-center gap-2 py-1">
+                          <button onClick={() => toggleTask(task._id, task.status === 'completed')} className="text-[14px] text-black/50">
+                            [{task.status === 'completed' ? '✓' : ' '}]
                           </button>
-                          <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                          <span className={`text-[14px] ${task.status === 'completed' ? 'text-black/40 line-through' : 'text-black'}`}>
                             {task.text}
                           </span>
                         </div>
@@ -1151,6 +1143,42 @@ export default function Home() {
                         />
                       </div>
                     </div>
+                    
+                    {/* Backlog section */}
+                    {backlogTasks && backlogTasks.length > 0 && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => setShowBacklog(!showBacklog)}
+                          className="text-[12px] text-black/40 hover:text-black/60 transition-colors flex items-center gap-1"
+                        >
+                          <span className="text-[10px]">{showBacklog ? '▼' : '▶'}</span>
+                          Backlog ({backlogTasks.length})
+                        </button>
+                        {showBacklog && (
+                          <div className="mt-2 pl-2 border-l border-black/10 space-y-1">
+                            {backlogTasks.map((task) => (
+                              <div key={task._id} className="flex items-center gap-2 py-0.5 group">
+                                <button
+                                  onClick={() => scheduleForTodayMutation({ taskId: task._id })}
+                                  className="text-[12px] text-black/30 hover:text-black transition-colors"
+                                  title="Add to today"
+                                >
+                                  +
+                                </button>
+                                <span className="text-[13px] text-black/50 flex-1">{task.text}</span>
+                                <button
+                                  onClick={() => dismissTaskMutation({ taskId: task._id })}
+                                  className="text-[12px] text-black/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Dismiss"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="h-px bg-black/10 my-4 flex-shrink-0" />
                   <div className="flex-1 flex flex-col min-h-0">
@@ -2141,23 +2169,23 @@ export default function Home() {
           {indexFilter === 'today' && (
             <div className="flex-1 flex flex-col px-8 pt-6 pb-6 min-h-0">
               {/* Tasks section - fixed at top */}
-              <div className="flex-shrink-0 mb-8">
+              <div className="flex-shrink-0 mb-6">
                 <p className="text-[12px] font-medium text-black/50 uppercase tracking-wide mb-4">Tasks</p>
                 
                 {/* Task list */}
                 <div className="space-y-2 mb-4">
-                  {localTodayTasks.map((task, idx) => (
+                  {(todayTasks ?? []).map((task) => (
                     <div 
-                      key={idx} 
+                      key={task._id} 
                       className="flex items-center gap-3 group"
                     >
                       <button
-                        onClick={() => toggleTask(idx)}
+                        onClick={() => toggleTask(task._id, task.status === 'completed')}
                         className="text-[14px] text-black/50 hover:text-black transition-colors"
                       >
-                        [{task.completed ? '✓' : ' '}]
+                        [{task.status === 'completed' ? '✓' : ' '}]
                       </button>
-                      <span className={`text-[14px] ${task.completed ? 'text-black/40 line-through' : 'text-black'}`}>
+                      <span className={`text-[14px] ${task.status === 'completed' ? 'text-black/40 line-through' : 'text-black'}`}>
                         {task.text}
                       </span>
                     </div>
@@ -2176,6 +2204,43 @@ export default function Home() {
                     className="flex-1 text-[14px] bg-transparent outline-none placeholder:text-black/30"
                   />
                 </div>
+                
+                {/* Backlog section - collapsible */}
+                {backlogTasks && backlogTasks.length > 0 && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => setShowBacklog(!showBacklog)}
+                      className="text-[12px] text-black/40 hover:text-black/60 transition-colors flex items-center gap-1.5"
+                    >
+                      <span className="text-[10px]">{showBacklog ? '▼' : '▶'}</span>
+                      <span className="uppercase tracking-wide">Backlog</span>
+                      <span className="text-black/30">({backlogTasks.length})</span>
+                    </button>
+                    {showBacklog && (
+                      <div className="mt-3 pl-3 border-l border-black/10 space-y-1.5">
+                        {backlogTasks.map((task) => (
+                          <div key={task._id} className="flex items-center gap-3 py-0.5 group">
+                            <button
+                              onClick={() => scheduleForTodayMutation({ taskId: task._id })}
+                              className="text-[13px] text-black/30 hover:text-black transition-colors"
+                              title="Add to today"
+                            >
+                              +
+                            </button>
+                            <span className="text-[13px] text-black/50 flex-1">{task.text}</span>
+                            <button
+                              onClick={() => dismissTaskMutation({ taskId: task._id })}
+                              className="text-[12px] text-black/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Dismiss permanently"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               
               {/* Divider */}
@@ -2199,7 +2264,7 @@ export default function Home() {
                 </p>
                 <button
                   onClick={saveDailyToIndex}
-                  disabled={!localTodayNotes.trim() && localTodayTasks.length === 0}
+                  disabled={!localTodayNotes.trim() && (!todayTasks || todayTasks.length === 0)}
                   className="text-[11px] text-black/50 hover:text-black transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {dailySaved ? '✓ saved' : 'save to index →'}
