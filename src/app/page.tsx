@@ -1093,7 +1093,7 @@ export default function Home() {
                 {/* AI Summary */}
                 <div>
                   <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">today</p>
-                  <p className="text-[14px] text-black/70 leading-[1.6] italic" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                  <p className="text-[14px] text-black/70 leading-[1.6]">
                     {todaySummary?.summary || "Start adding notes and tasks to get your daily summary."}
                   </p>
                 </div>
@@ -1102,7 +1102,7 @@ export default function Home() {
                 <div>
                   <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">tasks</p>
                   {(todayTasks ?? []).length === 0 ? (
-                    <p className="text-[13px] text-black/30 italic">No tasks for today yet.</p>
+                    <p className="text-[13px] text-black/30">No tasks for today yet.</p>
                   ) : (
                     <div>
                       {(todayTasks ?? []).map((task, idx) => (
@@ -1136,7 +1136,7 @@ export default function Home() {
                   </div>
                   
                   <div className="mb-6">
-                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]">
                       {(() => {
                         const day = currentTime.getDate();
                         const suffix = day === 1 || day === 21 || day === 31 ? 'st' 
@@ -1145,7 +1145,7 @@ export default function Home() {
                         return `${day}${suffix}`;
                       })()}
                     </p>
-                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]">
                       {currentTime.toLocaleDateString('en-GB', { month: 'long' })}
                     </p>
                   </div>
@@ -1998,7 +1998,7 @@ export default function Home() {
               <p className="text-[11px] text-black/40 uppercase tracking-wider mb-5">today</p>
               
               {/* AI Summary */}
-              <p className="text-[14px] text-black/70 leading-[1.6] italic mb-8" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+              <p className="text-[14px] text-black/70 leading-[1.6] mb-8">
                 {todaySummary?.summary || "Start adding notes and tasks to get your daily summary."}
               </p>
               
@@ -2008,7 +2008,7 @@ export default function Home() {
               {/* Tasks table */}
               <div className="flex-1 overflow-y-auto min-h-0">
                 {(todayTasks ?? []).length === 0 ? (
-                  <p className="text-[13px] text-black/30 italic">No tasks for today yet.</p>
+                  <p className="text-[13px] text-black/30">No tasks for today yet.</p>
                 ) : (
                   <div>
                     {(todayTasks ?? []).map((task, idx) => (
@@ -2053,7 +2053,7 @@ export default function Home() {
                 
                 {/* Large date */}
                 <div className="mb-8">
-                  <p className="text-[42px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                  <p className="text-[42px] text-black leading-[0.95] font-medium tracking-[-2px]">
                     {(() => {
                       const day = currentTime.getDate();
                       const suffix = day === 1 || day === 21 || day === 31 ? 'st' 
@@ -2062,7 +2062,7 @@ export default function Home() {
                       return `${day}${suffix}`;
                     })()}
                   </p>
-                  <p className="text-[42px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                  <p className="text-[42px] text-black leading-[0.95] font-medium tracking-[-2px]">
                     {currentTime.toLocaleDateString('en-GB', { month: 'long' })}
                   </p>
                 </div>
