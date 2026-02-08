@@ -422,6 +422,84 @@ export default function Home() {
   // Ref to measure horizontal divider position for right-section alignment
   const dividerLineRef = useRef<HTMLDivElement>(null);
   const [dividerTop, setDividerTop] = useState<number>(0);
+
+  // Chat interface (home dashboard)
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string }>>([]);
+  const [chatStatus, setChatStatus] = useState<'ready' | 'submitted' | 'streaming' | 'error'>('ready');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [chatInput, setChatInput] = useState('');
+  const chatAbortRef = useRef<AbortController | null>(null);
+
+  // Auto-scroll chat to bottom when new messages arrive or streaming
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleChatSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = chatInput.trim();
+    if (!text || chatStatus !== 'ready') return;
+    setChatInput('');
+
+    // Add user message
+    const userMsg = { id: `user-${Date.now()}`, role: 'user' as const, text };
+    const assistantId = `assistant-${Date.now()}`;
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatStatus('submitted');
+
+    // Build messages for the API (history + new message)
+    const apiMessages = [...chatMessages, userMsg].map(m => ({
+      role: m.role,
+      content: m.text,
+    }));
+
+    try {
+      chatAbortRef.current = new AbortController();
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: apiMessages }),
+        signal: chatAbortRef.current.signal,
+      });
+
+      if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No reader');
+
+      const decoder = new TextDecoder();
+      let fullText = '';
+      setChatStatus('streaming');
+      // Add empty assistant message
+      setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', text: '' }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        setChatMessages(prev =>
+          prev.map(m => m.id === assistantId ? { ...m, text: fullText } : m)
+        );
+      }
+
+      setChatStatus('ready');
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setChatStatus('ready');
+        return;
+      }
+      console.error('Chat error:', err);
+      setChatStatus('error');
+      // Add error message
+      setChatMessages(prev => [
+        ...prev.filter(m => m.id !== assistantId),
+        { id: assistantId, role: 'assistant', text: 'Something went wrong. Try again.' },
+      ]);
+      setTimeout(() => setChatStatus('ready'), 1000);
+    }
+  }, [chatInput, chatStatus, chatMessages]);
   
   // Reset editing mode when switching notes (the actual values are set in the other useEffect)
   useEffect(() => {
@@ -1161,6 +1239,79 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Chat interface */}
+                <div className="border border-black/10 flex flex-col" style={{ minHeight: '300px' }}>
+                  {/* Chat messages */}
+                  <div className="flex-1 overflow-y-auto px-5 py-4" style={{ maxHeight: '400px' }}>
+                    {chatMessages.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <p className="text-[13px] text-black/25 mb-1">ask me anything.</p>
+                        <p className="text-[11px] text-black/15">i know your notes, tasks, and ideas.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {chatMessages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[85%] ${
+                                msg.role === 'user'
+                                  ? 'bg-black/[0.04] px-3.5 py-2 rounded-lg'
+                                  : ''
+                              }`}
+                            >
+                              <p
+                                className={`text-[13px] leading-[1.7] whitespace-pre-wrap ${
+                                  msg.role === 'user' ? 'text-black' : 'text-black/80'
+                                }`}
+                              >
+                                {msg.text}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {(chatStatus === 'submitted' || chatStatus === 'streaming') && 
+                          chatMessages[chatMessages.length - 1]?.role === 'user' && (
+                          <div className="flex justify-start">
+                            <div className="flex items-center gap-1.5 py-2">
+                              <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '0ms' }} />
+                              <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '150ms' }} />
+                              <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '300ms' }} />
+                            </div>
+                          </div>
+                        )}
+
+                        <div ref={chatEndRef} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input */}
+                  <form onSubmit={handleChatSubmit} className="flex-shrink-0 border-t border-black/10 px-5 py-3 flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="message..."
+                      disabled={chatStatus !== 'ready' && chatStatus !== 'error'}
+                      className="flex-1 text-[13px] text-black bg-transparent outline-none placeholder:text-black/25 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim() || (chatStatus !== 'ready' && chatStatus !== 'error')}
+                      className="text-black/30 hover:text-black transition-colors disabled:opacity-20 flex-shrink-0"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                      </svg>
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
@@ -2085,6 +2236,90 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Right section - Chat interface below dashboard - Desktop only */}
+      {!isMobile && stage === 'second' && activeView === 'home' && (
+        <div
+          className="absolute bottom-0 right-0 flex flex-col"
+          style={{
+            left: '32%',
+            top: dividerTop > 0 ? `${dividerTop + 1}px` : '50%',
+            opacity: showAbout ? 1 : 0,
+            transition: 'opacity 0.5s ease-in',
+          }}
+        >
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto px-8 py-6 min-h-0">
+            {chatMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center">
+                <p className="text-[13px] text-black/25 mb-1">ask me anything about your notes, tasks, or ideas.</p>
+                <p className="text-[11px] text-black/15">i have access to your entire knowledge base.</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] ${
+                        msg.role === 'user'
+                          ? 'bg-black/[0.04] px-4 py-2.5 rounded-lg'
+                          : ''
+                      }`}
+                    >
+                      <p
+                        className={`text-[13px] leading-[1.7] whitespace-pre-wrap ${
+                          msg.role === 'user' ? 'text-black' : 'text-black/80'
+                        }`}
+                      >
+                        {msg.text}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Thinking indicator */}
+                {(chatStatus === 'submitted' || chatStatus === 'streaming') && 
+                  chatMessages[chatMessages.length - 1]?.role === 'user' && (
+                  <div className="flex justify-start">
+                    <div className="flex items-center gap-1.5 py-2">
+                      <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '0ms' }} />
+                      <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '150ms' }} />
+                      <span className="chat-dot w-[5px] h-[5px] bg-black/30 rounded-full" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                )}
+
+                <div ref={chatEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Input bar */}
+          <form onSubmit={handleChatSubmit} className="flex-shrink-0 border-t border-black/10 px-8 py-4 flex items-center gap-3">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="message..."
+              disabled={chatStatus !== 'ready' && chatStatus !== 'error'}
+              className="flex-1 text-[13px] text-black bg-transparent outline-none placeholder:text-black/25 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || (chatStatus !== 'ready' && chatStatus !== 'error')}
+              className="text-black/30 hover:text-black transition-colors disabled:opacity-20 disabled:hover:text-black/30 flex-shrink-0"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </form>
         </div>
       )}
 
