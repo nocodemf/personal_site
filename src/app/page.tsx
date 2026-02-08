@@ -425,12 +425,12 @@ export default function Home() {
 
   // Chat interface (home dashboard)
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string }>>([]);
-  const [chatStatus, setChatStatus] = useState<'ready' | 'submitted' | 'streaming' | 'error'>('ready');
+  const [chatStatus, setChatStatus] = useState<'ready' | 'submitted' | 'error'>('ready');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [chatInput, setChatInput] = useState('');
-  const chatAbortRef = useRef<AbortController | null>(null);
+  const chatAction = useAction(api.chat.sendMessage);
 
-  // Auto-scroll chat to bottom when new messages arrive or streaming
+  // Auto-scroll chat to bottom when new messages arrive
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
@@ -447,59 +447,26 @@ export default function Home() {
     setChatMessages(prev => [...prev, userMsg]);
     setChatStatus('submitted');
 
-    // Build messages for the API (history + new message)
+    // Build messages for the Convex action (history + new message)
     const apiMessages = [...chatMessages, userMsg].map(m => ({
-      role: m.role,
+      role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
 
     try {
-      chatAbortRef.current = new AbortController();
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
-        signal: chatAbortRef.current.signal,
-      });
-
-      if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('No reader');
-
-      const decoder = new TextDecoder();
-      let fullText = '';
-      setChatStatus('streaming');
-      // Add empty assistant message
-      setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', text: '' }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        setChatMessages(prev =>
-          prev.map(m => m.id === assistantId ? { ...m, text: fullText } : m)
-        );
-      }
-
+      const reply = await chatAction({ messages: apiMessages });
+      setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', text: reply }]);
       setChatStatus('ready');
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        setChatStatus('ready');
-        return;
-      }
       console.error('Chat error:', err);
       setChatStatus('error');
-      // Add error message
       setChatMessages(prev => [
-        ...prev.filter(m => m.id !== assistantId),
+        ...prev,
         { id: assistantId, role: 'assistant', text: 'Something went wrong. Try again.' },
       ]);
-      setTimeout(() => setChatStatus('ready'), 1000);
+      setTimeout(() => setChatStatus('ready'), 2000);
     }
-  }, [chatInput, chatStatus, chatMessages]);
+  }, [chatInput, chatStatus, chatMessages, chatAction]);
   
   // Reset editing mode when switching notes (the actual values are set in the other useEffect)
   useEffect(() => {
@@ -1275,7 +1242,7 @@ export default function Home() {
                           </div>
                         ))}
 
-                        {(chatStatus === 'submitted' || chatStatus === 'streaming') && 
+                        {chatStatus === 'submitted' && 
                           chatMessages[chatMessages.length - 1]?.role === 'user' && (
                           <div className="flex justify-start">
                             <div className="flex items-center gap-1.5 py-2">
@@ -2283,7 +2250,7 @@ export default function Home() {
                 ))}
 
                 {/* Thinking indicator */}
-                {(chatStatus === 'submitted' || chatStatus === 'streaming') && 
+                {chatStatus === 'submitted' && 
                   chatMessages[chatMessages.length - 1]?.role === 'user' && (
                   <div className="flex justify-start">
                     <div className="flex items-center gap-1.5 py-2">
