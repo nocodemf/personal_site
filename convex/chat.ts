@@ -6,12 +6,12 @@ import { internal } from "./_generated/api";
 export const getChatContext = internalQuery({
   args: {},
   handler: async (ctx) => {
-    // Get all notes
-    const notes = await ctx.db.query("notes").collect();
+    // Get all notes — limit to most recent 30 to keep context manageable
+    const notes = await ctx.db.query("notes").order("desc").take(30);
     const notesContext = notes
       .map(
         (n) =>
-          `• ${n.title} [${n.tags.join(", ")}]${n.aiSummary ? ` — ${n.aiSummary}` : ""}\n  ${n.body.substring(0, 200)}${n.body.length > 200 ? "..." : ""}`
+          `• ${n.title} [${(n.tags ?? []).join(", ")}]${n.aiSummary ? ` — ${n.aiSummary}` : ""}\n  ${(n.body ?? "").substring(0, 150)}${(n.body ?? "").length > 150 ? "..." : ""}`
       )
       .join("\n");
 
@@ -23,7 +23,6 @@ export const getChatContext = internalQuery({
         q.eq("status", "active").eq("scheduledDate", today)
       )
       .collect();
-    // Also include completed tasks for today
     const completedTasks = await ctx.db
       .query("taskBank")
       .withIndex("by_status_and_date", (q) =>
@@ -41,11 +40,11 @@ export const getChatContext = internalQuery({
       .withIndex("by_date", (q) => q.eq("date", today))
       .first();
     const todayContext = todayNote
-      ? `Notes: ${todayNote.notes || "(empty)"}\nAI Summary: ${todayNote.aiSummary || "(none)"}`
+      ? `Notes: ${(todayNote.notes ?? "").substring(0, 500) || "(empty)"}\nAI Summary: ${todayNote.aiSummary || "(none)"}`
       : "No daily note yet.";
 
     return {
-      notesContext,
+      notesContext: notesContext.substring(0, 6000), // Cap total context
       noteCount: notes.length,
       tasksContext,
       todayContext,
@@ -65,7 +64,19 @@ export const sendMessage = action({
   },
   handler: async (ctx, args): Promise<string> => {
     // Fetch context
-    const context = await ctx.runQuery(internal.chat.getChatContext, {});
+    let context;
+    try {
+      context = await ctx.runQuery(internal.chat.getChatContext, {});
+    } catch (err) {
+      console.error("[chat] Failed to fetch context:", String(err));
+      context = { notesContext: "", noteCount: 0, tasksContext: "", todayContext: "" };
+    }
+
+    const apiKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
+    if (!apiKey) {
+      console.error("[chat] VERCEL_AI_GATEWAY_API_KEY is not set!");
+      return "Chat is not configured — missing API key.";
+    }
 
     const systemPrompt = `You are a personal AI assistant embedded in the user's dashboard. You have full access to their knowledge base, tasks, and daily notes.
 
@@ -90,40 +101,48 @@ RULES:
 - If asked about something in their notes, quote or reference the specific note.
 - You can help brainstorm, summarise, connect ideas across notes, or just chat.`;
 
-    const response = await fetch(
-      "https://ai-gateway.vercel.sh/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.VERCEL_AI_GATEWAY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...args.messages,
-          ],
-          max_tokens: 500,
-          temperature: 0.7,
-        }),
+    // Only keep last 10 messages to avoid token overflow
+    const recentMessages = args.messages.slice(-10);
+
+    try {
+      const response = await fetch(
+        "https://ai-gateway.vercel.sh/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...recentMessages,
+            ],
+            max_tokens: 500,
+            temperature: 0.7,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[chat] API error:", response.status, errorText.substring(0, 300));
+        return `Sorry, couldn't get a response (${response.status}). Try again in a moment.`;
       }
-    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Chat API error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      const data = await response.json();
+      const reply = data.choices?.[0]?.message?.content?.trim();
+
+      if (!reply) {
+        console.error("[chat] Empty reply from API. Response:", JSON.stringify(data).substring(0, 300));
+        return "Got an empty response. Try rephrasing your question.";
+      }
+
+      return reply;
+    } catch (err) {
+      console.error("[chat] Fetch error:", String(err));
+      return "Something went wrong connecting to the AI. Try again.";
     }
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content?.trim();
-
-    if (!reply) {
-      throw new Error("No response from AI");
-    }
-
-    return reply;
   },
 });
-
