@@ -1023,29 +1023,31 @@ export default function Home() {
       {/* ==================== MOBILE LAYOUT ==================== */}
       {isMobile && stage === 'second' && (
         <>
-          {/* Mobile Home - Character centered with nav underneath */}
+          {/* Mobile Home - Character + dashboard */}
           {activeView === 'home' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
-              <PixelCharacter 
-                pixelSize={2} 
-                startPhase="entering_left"
-                startOffset={-150}
-                walkSpeed={4}
-                onPhaseChange={handlePhaseChange}
-              />
-              
+            <div className="absolute inset-0 flex flex-col overflow-y-auto">
+              {/* Character area */}
+              <div className="flex flex-col items-center pt-8 pb-4 px-6 flex-shrink-0">
+                <PixelCharacter 
+                  pixelSize={2} 
+                  startPhase="entering_left"
+                  startOffset={-150}
+                  walkSpeed={4}
+                  onPhaseChange={handlePhaseChange}
+                />
+              </div>
+
               {/* Navigation underneath character */}
               <div 
-                className="mt-12 flex flex-col items-center gap-6"
+                className="flex flex-col items-center gap-4 pb-6 flex-shrink-0"
                 style={{
                   opacity: showAbout ? 1 : 0,
                   transition: 'opacity 0.5s ease-in',
                 }}
               >
-                {/* Concealed logout - tap on "urav" */}
                 <button 
                   onClick={handleLogout}
-                  className="text-[14px] font-medium text-black mb-2 hover:text-black/60 transition-colors"
+                  className="text-[14px] font-medium text-black mb-1 hover:text-black/60 transition-colors"
                 >
                   urav
                 </button>
@@ -1068,6 +1070,97 @@ export default function Home() {
                   >
                     archive
                   </button>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div 
+                className="mx-6 h-px bg-black flex-shrink-0"
+                style={{
+                  opacity: showAbout ? 1 : 0,
+                  transition: 'opacity 0.5s ease-in',
+                }}
+              />
+
+              {/* Dashboard content */}
+              <div 
+                className="flex-1 px-6 pt-6 pb-8 space-y-6"
+                style={{
+                  opacity: showAbout ? 1 : 0,
+                  transition: 'opacity 0.5s ease-in',
+                }}
+              >
+                {/* AI Summary */}
+                <div>
+                  <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">today</p>
+                  <p className="text-[14px] text-black/70 leading-[1.6] italic" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                    {todaySummary?.summary || "Start adding notes and tasks to get your daily summary."}
+                  </p>
+                </div>
+
+                {/* Tasks */}
+                <div>
+                  <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">tasks</p>
+                  {(todayTasks ?? []).length === 0 ? (
+                    <p className="text-[13px] text-black/30 italic">No tasks for today yet.</p>
+                  ) : (
+                    <div>
+                      {(todayTasks ?? []).map((task, idx) => (
+                        <div 
+                          key={task._id}
+                          className="flex items-center gap-3 py-2.5 border-b border-black/5 cursor-pointer"
+                          onClick={() => toggleTask(task._id, task.status === 'completed')}
+                        >
+                          <span className="text-[12px] text-black/25 w-5 text-right tabular-nums flex-shrink-0 font-medium">
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+                          <div 
+                            className="w-[6px] h-[6px] flex-shrink-0"
+                            style={{ backgroundColor: task.status === 'completed' ? '#4ade80' : '#1a1a1a' }}
+                          />
+                          <span className={`text-[13px] flex-1 ${task.status === 'completed' ? 'text-black/35 line-through' : 'text-black'}`}>
+                            {task.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Date + Events card */}
+                <div className="border border-black p-5">
+                  <div className="flex items-center gap-2 text-[12px] text-black/40 mb-4">
+                    <span className="tabular-nums">{currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-black/20">|</span>
+                    <span>London, England</span>
+                  </div>
+                  
+                  <div className="mb-6">
+                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                      {(() => {
+                        const day = currentTime.getDate();
+                        const suffix = day === 1 || day === 21 || day === 31 ? 'st' 
+                          : day === 2 || day === 22 ? 'nd' 
+                          : day === 3 || day === 23 ? 'rd' : 'th';
+                        return `${day}${suffix}`;
+                      })()}
+                    </p>
+                    <p className="text-[36px] text-black leading-[0.95] font-medium tracking-[-2px]" style={{ fontFamily: 'var(--font-xanh-mono)' }}>
+                      {currentTime.toLocaleDateString('en-GB', { month: 'long' })}
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-black/10 mb-4" />
+
+                  <p className="text-[11px] text-black/40 uppercase tracking-wider mb-3">events</p>
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-[5px] h-[5px] bg-black/15 flex-shrink-0" />
+                        <p className="text-[13px] text-black/25">Event name - time</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
